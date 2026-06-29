@@ -1,0 +1,1328 @@
+import { create } from 'zustand';
+import { supabase } from '@/lib/supabase';
+import type {
+  User,
+  StoreInfo,
+  Client,
+  Room,
+  Floor,
+  Category,
+  Service,
+  Reservation,
+  ReservationRoom,
+  ReservationService,
+  Payment,
+  Worker,
+  Advance,
+  Absence,
+  WorkerPayment,
+  Expense,
+  ExpenseCategory,
+  Maintenance,
+  CashTransaction,
+  Permissions,
+  ModuleKey,
+} from '@/types';
+import { createInitialData, type AppData } from '@/data/seed';
+import { STORE_INFO } from '@/data/constants';
+
+// ─── DB → TypeScript mappers ───────────────────────────────────────────────
+
+function dbToClient(row: Record<string, unknown>): Client {
+  return {
+    id: row.id as string,
+    firstName: row.first_name as string,
+    lastName: row.last_name as string,
+    birthDate: (row.birth_date as string) || undefined,
+    birthPlace: (row.birth_place as string) || undefined,
+    sexe: (row.sexe as Client['sexe']) || undefined,
+    profession: (row.profession as string) || undefined,
+    address: (row.address as string) || undefined,
+    city: (row.city as string) || undefined,
+    phone: row.phone as string,
+    phone2: (row.phone2 as string) || undefined,
+    email: (row.email as string) || undefined,
+    documentType: (row.document_type as Client['documentType']) || undefined,
+    documentNumber: (row.document_number as string) || undefined,
+    documentIssueDate: (row.document_issue_date as string) || undefined,
+    documentExpiryDate: (row.document_expiry_date as string) || undefined,
+    documentIssuePlace: (row.document_issue_place as string) || undefined,
+    photos: (row.photo_urls as string[]) || [],
+    createdAt: ((row.created_at as string) || '').slice(0, 10),
+  };
+}
+
+function dbToFloor(row: Record<string, unknown>): Floor {
+  return { id: row.id as string, name: row.name as string };
+}
+
+function dbToCategory(row: Record<string, unknown>): Category {
+  return { id: row.id as string, name: row.name as string };
+}
+
+function dbToRoom(row: Record<string, unknown>): Room {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    capacity: row.capacity as number,
+    floorId: row.floor_id as string,
+    categoryId: row.category_id as string,
+    pricePerNight: row.price_per_night as number,
+    status: row.status as Room['status'],
+    maintenanceNote: (row.maintenance_note as string) || undefined,
+  };
+}
+
+function dbToService(row: Record<string, unknown>): Service {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    description: (row.description as string) || undefined,
+    price: row.price as number,
+  };
+}
+
+function dbToReservation(row: Record<string, unknown>): Reservation {
+  const rooms: ReservationRoom[] = ((row.reservation_rooms as Record<string, unknown>[]) || []).map(
+    (rr) => ({ roomId: rr.room_id as string, pricePerNight: rr.price_per_night as number }),
+  );
+  const services: ReservationService[] = (
+    (row.reservation_services as Record<string, unknown>[]) || []
+  ).map((rs) => ({
+    serviceId: rs.service_id as string,
+    quantity: rs.quantity as number,
+    unitPrice: rs.unit_price as number,
+  }));
+  const payments: Payment[] = ((row.payments as Record<string, unknown>[]) || []).map((p) => ({
+    id: p.id as string,
+    amount: p.amount as number,
+    date: p.date as string,
+    note: (p.note as string) || undefined,
+  }));
+  const r: Reservation = {
+    id: row.id as string,
+    code: row.code as string,
+    clientId: row.client_id as string,
+    rooms,
+    services,
+    checkIn: row.check_in as string,
+    checkOut: row.check_out as string,
+    checkInTime: (row.check_in_time as string) || '14:00',
+    checkOutTime: (row.check_out_time as string) || '11:00',
+    nights: row.nights as number,
+    total: row.total as number,
+    payments,
+    status: row.status as Reservation['status'],
+    createdAt: ((row.created_at as string) || '').slice(0, 10),
+  };
+  return r;
+}
+
+function dbToWorker(row: Record<string, unknown>): Worker {
+  const advances: Advance[] = ((row.worker_advances as Record<string, unknown>[]) || []).map(
+    (a) => ({
+      id: a.id as string,
+      date: a.date as string,
+      description: (a.description as string) || undefined,
+      amount: a.amount as number,
+      deducted: a.deducted as boolean,
+    }),
+  );
+  const absences: Absence[] = ((row.worker_absences as Record<string, unknown>[]) || []).map(
+    (a) => ({
+      id: a.id as string,
+      date: a.date as string,
+      description: (a.description as string) || undefined,
+      cost: a.cost as number,
+    }),
+  );
+  const payments: WorkerPayment[] = ((row.worker_payments as Record<string, unknown>[]) || []).map(
+    (p) => ({
+      id: p.id as string,
+      date: p.date as string,
+      amount: p.amount as number,
+      description: (p.description as string) || undefined,
+    }),
+  );
+  const profile = row.profiles as Record<string, unknown> | null;
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    birthDate: (row.birth_date as string) || undefined,
+    cin: (row.cin as string) || undefined,
+    phone: row.phone as string,
+    role: row.role as string,
+    startDate: row.start_date as string,
+    hasSalary: row.has_salary as boolean,
+    salaryType: (row.salary_type as Worker['salaryType']) || undefined,
+    salaryAmount: (row.salary_amount as number) || undefined,
+    hasAccount: row.has_account as boolean,
+    account:
+      row.has_account && profile
+        ? {
+            email: (profile.email as string) || '',
+            username: (profile.username as string) || '',
+            password: '',
+          }
+        : undefined,
+    permissions: (row.permissions as Permissions) || {},
+    advances,
+    absences,
+    payments,
+    active: row.active as boolean,
+  };
+}
+
+function dbToExpense(row: Record<string, unknown>): Expense {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    categoryId: row.category_id as string,
+    description: (row.description as string) || undefined,
+    amount: row.amount as number,
+    date: row.date as string,
+  };
+}
+
+function dbToExpenseCategory(row: Record<string, unknown>): ExpenseCategory {
+  return { id: row.id as string, name: row.name as string };
+}
+
+function dbToMaintenance(row: Record<string, unknown>): Maintenance {
+  return {
+    id: row.id as string,
+    roomId: row.room_id as string,
+    name: row.name as string,
+    cost: row.cost as number,
+    date: row.date as string,
+    description: (row.description as string) || undefined,
+  };
+}
+
+function dbToCashTransaction(row: Record<string, unknown>): CashTransaction {
+  return {
+    id: row.id as string,
+    type: row.type as CashTransaction['type'],
+    amount: row.amount as number,
+    description: row.description as string,
+    date: row.date as string,
+  };
+}
+
+function dbToStoreInfo(row: Record<string, unknown>): StoreInfo {
+  return {
+    name: (row.name as string) || 'Ma Résidence',
+    logo: (row.logo_url as string) || null,
+    description: (row.description as string) || '',
+    email: (row.email as string) || '',
+    phone: (row.phone as string) || '',
+    address: (row.address as string) || '',
+    nif: (row.nif as string) || '',
+    nis: (row.nis as string) || '',
+    article: (row.article as string) || '',
+    rc: (row.rc as string) || '',
+  };
+}
+
+// ─── Status derivation ─────────────────────────────────────────────────────
+
+function deriveStatus(
+  total: number,
+  payments: Payment[],
+  current: Reservation,
+): Reservation['status'] {
+  if (current.status === 'cancelled') return 'cancelled';
+  const paid = payments.reduce((s, p) => s + p.amount, 0);
+  if (paid >= total) {
+    const today = new Date().toISOString().slice(0, 10);
+    const active = current.checkIn <= today && today < current.checkOut;
+    return active ? 'active' : 'paid';
+  }
+  return 'debt';
+}
+
+function nextResCode(reservations: Reservation[]): string {
+  const max = reservations.reduce((m, r) => {
+    const n = parseInt(r.code.replace(/\D/g, ''), 10);
+    return isNaN(n) ? m : Math.max(m, n);
+  }, 0);
+  return `RES-${String(max + 1).padStart(3, '0')}`;
+}
+
+// ─── State interface ───────────────────────────────────────────────────────
+
+interface AuthState {
+  user: User | null;
+}
+
+interface AppState extends AppData, AuthState {
+  storeInfo: StoreInfo;
+  loading: boolean;
+
+  // Internal helpers
+  setUser: (user: User | null) => void;
+  loadAll: () => Promise<void>;
+
+  // Auth
+  login: (identifier: string, password: string) => Promise<boolean>;
+  signup: (p: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    username: string;
+    password: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
+  logout: () => Promise<void>;
+  updateAccount: (patch: Partial<User>) => Promise<void>;
+  changePassword: (oldPw: string, newPw: string) => Promise<boolean>;
+
+  // Clients
+  addClient: (c: Omit<Client, 'id' | 'createdAt'>) => Promise<Client>;
+  updateClient: (id: string, patch: Partial<Client>) => Promise<void>;
+  deleteClient: (id: string) => Promise<void>;
+
+  // Rooms / floors / categories
+  addRoom: (r: Omit<Room, 'id' | 'status'>) => Promise<void>;
+  updateRoom: (id: string, patch: Partial<Room>) => Promise<void>;
+  deleteRoom: (id: string) => Promise<void>;
+  setRoomMaintenance: (id: string, note?: string) => Promise<void>;
+  endRoomMaintenance: (id: string) => Promise<void>;
+  addFloor: (name: string) => Promise<void>;
+  deleteFloor: (id: string) => Promise<void>;
+  addCategory: (name: string) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
+
+  // Services
+  addService: (s: Omit<Service, 'id'>) => Promise<void>;
+  updateService: (id: string, patch: Partial<Service>) => Promise<void>;
+  deleteService: (id: string) => Promise<void>;
+
+  // Reservations
+  addReservation: (r: Omit<Reservation, 'id' | 'code' | 'createdAt'>) => Promise<void>;
+  updateReservation: (id: string, patch: Partial<Reservation>) => Promise<void>;
+  deleteReservation: (id: string) => Promise<void>;
+  addPayment: (resId: string, amount: number, note?: string) => Promise<void>;
+
+  // Workers
+  addWorker: (w: Omit<Worker, 'id' | 'advances' | 'absences' | 'payments'>) => Promise<void>;
+  updateWorker: (id: string, patch: Partial<Worker>) => Promise<void>;
+  deleteWorker: (id: string) => Promise<void>;
+  addWorkerAdvance: (workerId: string, a: Omit<Advance, 'id' | 'deducted'>) => Promise<void>;
+  addWorkerAbsence: (workerId: string, a: Omit<Absence, 'id'>) => Promise<void>;
+  addWorkerPayment: (workerId: string, p: Omit<WorkerPayment, 'id'>) => Promise<void>;
+  setWorkerPermissions: (workerId: string, perms: Permissions) => Promise<void>;
+  addRole: (name: string) => Promise<void>;
+
+  // Expenses
+  addExpense: (e: Omit<Expense, 'id'>) => Promise<void>;
+  updateExpense: (id: string, patch: Partial<Expense>) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
+  addExpenseCategory: (name: string) => Promise<void>;
+  deleteExpenseCategory: (id: string) => Promise<void>;
+
+  // Maintenances
+  addMaintenance: (m: Omit<Maintenance, 'id'>) => Promise<void>;
+  deleteMaintenance: (id: string) => Promise<void>;
+
+  // Cash
+  addCashTransaction: (t: Omit<CashTransaction, 'id'>) => Promise<void>;
+
+  // Settings / data
+  updateStoreInfo: (patch: Partial<StoreInfo>) => Promise<void>;
+  exportData: () => string;
+  importData: (json: string) => boolean;
+  resetData: () => void;
+}
+
+// ─── Store ─────────────────────────────────────────────────────────────────
+
+export const useApp = create<AppState>()((set, get) => ({
+  ...createInitialData(),
+  storeInfo: STORE_INFO,
+  user: null,
+  loading: false,
+
+  setUser: (user) => set({ user }),
+
+  // ── Load all data from Supabase ──────────────────────────────────────────
+  loadAll: async () => {
+    set({ loading: true });
+    try {
+      const [
+        clientsRes,
+        floorsRes,
+        categoriesRes,
+        roomsRes,
+        servicesRes,
+        reservationsRes,
+        workersRes,
+        expensesRes,
+        expCatsRes,
+        maintenancesRes,
+        cashRes,
+        settingsRes,
+      ] = await Promise.all([
+        supabase.from('clients').select('*').order('created_at', { ascending: false }),
+        supabase.from('floors').select('*').order('name'),
+        supabase.from('categories').select('*').order('name'),
+        supabase.from('rooms').select('*').order('name'),
+        supabase.from('services').select('*').order('name'),
+        supabase
+          .from('reservations')
+          .select('*, reservation_rooms(*), reservation_services(*), payments(*)')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('workers')
+          .select('*, worker_advances(*), worker_absences(*), worker_payments(*), profiles(username, email)')
+          .order('name'),
+        supabase.from('expenses').select('*').order('date', { ascending: false }),
+        supabase.from('expense_categories').select('*').order('name'),
+        supabase.from('maintenances').select('*').order('date', { ascending: false }),
+        supabase.from('cash_transactions').select('*').order('date', { ascending: false }),
+        supabase.from('settings').select('*').single(),
+      ]);
+
+      // Derive roles from workers
+      const workerRows = (workersRes.data ?? []) as Record<string, unknown>[];
+      const roles = [...new Set(workerRows.map((w) => w.role as string).filter(Boolean))];
+
+      set({
+        clients: ((clientsRes.data ?? []) as Record<string, unknown>[]).map(dbToClient),
+        floors: ((floorsRes.data ?? []) as Record<string, unknown>[]).map(dbToFloor),
+        categories: ((categoriesRes.data ?? []) as Record<string, unknown>[]).map(dbToCategory),
+        rooms: ((roomsRes.data ?? []) as Record<string, unknown>[]).map(dbToRoom),
+        services: ((servicesRes.data ?? []) as Record<string, unknown>[]).map(dbToService),
+        reservations: ((reservationsRes.data ?? []) as Record<string, unknown>[]).map(
+          dbToReservation,
+        ),
+        workers: workerRows.map(dbToWorker),
+        expenses: ((expensesRes.data ?? []) as Record<string, unknown>[]).map(dbToExpense),
+        expenseCategories: ((expCatsRes.data ?? []) as Record<string, unknown>[]).map(
+          dbToExpenseCategory,
+        ),
+        maintenances: ((maintenancesRes.data ?? []) as Record<string, unknown>[]).map(
+          dbToMaintenance,
+        ),
+        cashTransactions: ((cashRes.data ?? []) as Record<string, unknown>[]).map(
+          dbToCashTransaction,
+        ),
+        roles,
+        storeInfo: settingsRes.data
+          ? dbToStoreInfo(settingsRes.data as Record<string, unknown>)
+          : STORE_INFO,
+        loading: false,
+      });
+    } catch (e) {
+      console.error('loadAll error:', e);
+      set({ loading: false });
+    }
+  },
+
+  // ── AUTH ─────────────────────────────────────────────────────────────────
+
+  login: async (identifier, password) => {
+    const id = identifier.trim().toLowerCase();
+    let email = id;
+
+    // If no @ sign, look up profile by username to find email
+    if (!id.includes('@')) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('username', id)
+        .single();
+      if (!profile?.email) return false;
+      email = profile.email as string;
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error || !data.user) return false;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', data.user.id)
+      .single();
+
+    // Load all data before setting user (ensures data is ready when UI renders)
+    await get().loadAll();
+
+    set({
+      user: {
+        id: data.user.id,
+        name: (profile?.name as string) ?? data.user.email ?? '',
+        username: (profile?.username as string) ?? '',
+        email: data.user.email ?? '',
+        password: '',
+        role: (profile?.role as User['role']) ?? 'worker',
+        avatar: (profile?.avatar_url as string) ?? null,
+        workerId: (profile?.worker_id as string) ?? undefined,
+      },
+    });
+
+    return true;
+  },
+
+  signup: async ({ firstName, lastName, email, username, password }) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { role: 'admin', name: `${firstName} ${lastName}`, username },
+      },
+    });
+    if (error) return { ok: false, error: error.message };
+    if (!data.user) return { ok: false, error: 'Échec de la création du compte' };
+
+    // Upsert profile so email is stored for username-based login
+    await supabase.from('profiles').upsert({
+      id: data.user.id,
+      name: `${firstName} ${lastName}`,
+      username,
+      email,
+      role: 'admin',
+      avatar_url: null,
+    });
+
+    await get().loadAll();
+
+    set({
+      user: {
+        id: data.user.id,
+        name: `${firstName} ${lastName}`,
+        username,
+        email,
+        password: '',
+        role: 'admin',
+        avatar: null,
+      },
+    });
+
+    return { ok: true };
+  },
+
+  logout: async () => {
+    await supabase.auth.signOut();
+    set({ user: null, ...createInitialData(), storeInfo: STORE_INFO });
+  },
+
+  updateAccount: async (patch) => {
+    const u = get().user;
+    if (!u) return;
+
+    const profilePatch: Record<string, unknown> = {};
+    if (patch.name !== undefined) profilePatch.name = patch.name;
+    if (patch.username !== undefined) profilePatch.username = patch.username;
+    if (patch.avatar !== undefined) profilePatch.avatar_url = patch.avatar;
+    if (patch.email !== undefined) profilePatch.email = patch.email;
+
+    if (Object.keys(profilePatch).length > 0) {
+      await supabase.from('profiles').update(profilePatch).eq('id', u.id);
+    }
+
+    if (patch.email && patch.email !== u.email) {
+      await supabase.auth.updateUser({ email: patch.email });
+    }
+
+    set((s) => ({ user: s.user ? { ...s.user, ...patch } : null }));
+  },
+
+  changePassword: async (oldPw, newPw) => {
+    const u = get().user;
+    if (!u) return false;
+    // Verify old password
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email: u.email,
+      password: oldPw,
+    });
+    if (verifyError) return false;
+    const { error } = await supabase.auth.updateUser({ password: newPw });
+    return !error;
+  },
+
+  // ── CLIENTS ──────────────────────────────────────────────────────────────
+
+  addClient: async (c) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data, error } = await supabase
+      .from('clients')
+      .insert({
+        first_name: c.firstName,
+        last_name: c.lastName,
+        birth_date: c.birthDate || null,
+        birth_place: c.birthPlace || null,
+        sexe: c.sexe || null,
+        profession: c.profession || null,
+        address: c.address || null,
+        city: c.city || null,
+        phone: c.phone,
+        phone2: c.phone2 || null,
+        email: c.email || null,
+        document_type: c.documentType || null,
+        document_number: c.documentNumber || null,
+        document_issue_date: c.documentIssueDate || null,
+        document_expiry_date: c.documentExpiryDate || null,
+        document_issue_place: c.documentIssuePlace || null,
+        photo_urls: c.photos ?? [],
+        created_at: today,
+      })
+      .select()
+      .single();
+
+    if (error || !data) throw new Error(error?.message ?? 'Failed to add client');
+
+    const client: Client = {
+      ...c,
+      id: (data as Record<string, unknown>).id as string,
+      createdAt: today,
+      photos: c.photos ?? [],
+    };
+    set((s) => ({ clients: [client, ...s.clients] }));
+    return client;
+  },
+
+  updateClient: async (id, patch) => {
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.firstName !== undefined) dbPatch.first_name = patch.firstName;
+    if (patch.lastName !== undefined) dbPatch.last_name = patch.lastName;
+    if (patch.birthDate !== undefined) dbPatch.birth_date = patch.birthDate || null;
+    if (patch.birthPlace !== undefined) dbPatch.birth_place = patch.birthPlace || null;
+    if (patch.sexe !== undefined) dbPatch.sexe = patch.sexe || null;
+    if (patch.profession !== undefined) dbPatch.profession = patch.profession || null;
+    if (patch.address !== undefined) dbPatch.address = patch.address || null;
+    if (patch.city !== undefined) dbPatch.city = patch.city || null;
+    if (patch.phone !== undefined) dbPatch.phone = patch.phone;
+    if (patch.phone2 !== undefined) dbPatch.phone2 = patch.phone2 || null;
+    if (patch.email !== undefined) dbPatch.email = patch.email || null;
+    if (patch.documentType !== undefined) dbPatch.document_type = patch.documentType || null;
+    if (patch.documentNumber !== undefined) dbPatch.document_number = patch.documentNumber || null;
+    if (patch.documentIssueDate !== undefined) dbPatch.document_issue_date = patch.documentIssueDate || null;
+    if (patch.documentExpiryDate !== undefined) dbPatch.document_expiry_date = patch.documentExpiryDate || null;
+    if (patch.documentIssuePlace !== undefined) dbPatch.document_issue_place = patch.documentIssuePlace || null;
+    if (patch.photos !== undefined) dbPatch.photo_urls = patch.photos;
+
+    await supabase.from('clients').update(dbPatch).eq('id', id);
+    set((s) => ({ clients: s.clients.map((c) => (c.id === id ? { ...c, ...patch } : c)) }));
+  },
+
+  deleteClient: async (id) => {
+    await supabase.from('clients').delete().eq('id', id);
+    set((s) => ({ clients: s.clients.filter((c) => c.id !== id) }));
+  },
+
+  // ── ROOMS / FLOORS / CATEGORIES ──────────────────────────────────────────
+
+  addRoom: async (r) => {
+    const { data, error } = await supabase
+      .from('rooms')
+      .insert({
+        name: r.name,
+        capacity: r.capacity,
+        floor_id: r.floorId,
+        category_id: r.categoryId,
+        price_per_night: r.pricePerNight,
+        status: 'available',
+        maintenance_note: r.maintenanceNote || null,
+      })
+      .select()
+      .single();
+    if (error || !data) return;
+    const room: Room = {
+      ...r,
+      id: (data as Record<string, unknown>).id as string,
+      status: 'available',
+    };
+    set((s) => ({ rooms: [...s.rooms, room] }));
+  },
+
+  updateRoom: async (id, patch) => {
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.name !== undefined) dbPatch.name = patch.name;
+    if (patch.capacity !== undefined) dbPatch.capacity = patch.capacity;
+    if (patch.floorId !== undefined) dbPatch.floor_id = patch.floorId;
+    if (patch.categoryId !== undefined) dbPatch.category_id = patch.categoryId;
+    if (patch.pricePerNight !== undefined) dbPatch.price_per_night = patch.pricePerNight;
+    if (patch.status !== undefined) dbPatch.status = patch.status;
+    if (patch.maintenanceNote !== undefined) dbPatch.maintenance_note = patch.maintenanceNote || null;
+    await supabase.from('rooms').update(dbPatch).eq('id', id);
+    set((s) => ({ rooms: s.rooms.map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
+  },
+
+  deleteRoom: async (id) => {
+    await supabase.from('rooms').delete().eq('id', id);
+    set((s) => ({ rooms: s.rooms.filter((r) => r.id !== id) }));
+  },
+
+  setRoomMaintenance: async (id, note) => {
+    await supabase
+      .from('rooms')
+      .update({ status: 'maintenance', maintenance_note: note || null })
+      .eq('id', id);
+    set((s) => ({
+      rooms: s.rooms.map((r) =>
+        r.id === id ? { ...r, status: 'maintenance', maintenanceNote: note } : r,
+      ),
+    }));
+  },
+
+  endRoomMaintenance: async (id) => {
+    await supabase
+      .from('rooms')
+      .update({ status: 'available', maintenance_note: null })
+      .eq('id', id);
+    set((s) => ({
+      rooms: s.rooms.map((r) =>
+        r.id === id ? { ...r, status: 'available', maintenanceNote: undefined } : r,
+      ),
+    }));
+  },
+
+  addFloor: async (name) => {
+    const { data, error } = await supabase.from('floors').insert({ name }).select().single();
+    if (error || !data) return;
+    set((s) => ({
+      floors: [...s.floors, { id: (data as Record<string, unknown>).id as string, name }],
+    }));
+  },
+
+  deleteFloor: async (id) => {
+    // Delete rooms on this floor first
+    await supabase.from('rooms').delete().eq('floor_id', id);
+    await supabase.from('floors').delete().eq('id', id);
+    set((s) => ({
+      floors: s.floors.filter((f) => f.id !== id),
+      rooms: s.rooms.filter((r) => r.floorId !== id),
+    }));
+  },
+
+  addCategory: async (name) => {
+    const { data, error } = await supabase.from('categories').insert({ name }).select().single();
+    if (error || !data) return;
+    set((s) => ({
+      categories: [...s.categories, { id: (data as Record<string, unknown>).id as string, name }],
+    }));
+  },
+
+  deleteCategory: async (id) => {
+    await supabase.from('categories').delete().eq('id', id);
+    set((s) => ({ categories: s.categories.filter((c) => c.id !== id) }));
+  },
+
+  // ── SERVICES ─────────────────────────────────────────────────────────────
+
+  addService: async (svc) => {
+    const { data, error } = await supabase
+      .from('services')
+      .insert({ name: svc.name, description: svc.description || null, price: svc.price })
+      .select()
+      .single();
+    if (error || !data) return;
+    set((s) => ({
+      services: [
+        ...s.services,
+        { ...svc, id: (data as Record<string, unknown>).id as string },
+      ],
+    }));
+  },
+
+  updateService: async (id, patch) => {
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.name !== undefined) dbPatch.name = patch.name;
+    if (patch.description !== undefined) dbPatch.description = patch.description || null;
+    if (patch.price !== undefined) dbPatch.price = patch.price;
+    await supabase.from('services').update(dbPatch).eq('id', id);
+    set((s) => ({ services: s.services.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
+  },
+
+  deleteService: async (id) => {
+    await supabase.from('services').delete().eq('id', id);
+    set((s) => ({ services: s.services.filter((x) => x.id !== id) }));
+  },
+
+  // ── RESERVATIONS ─────────────────────────────────────────────────────────
+
+  addReservation: async (r) => {
+    const code = nextResCode(get().reservations);
+    const today = new Date().toISOString().slice(0, 10);
+
+    const { data: resData, error } = await supabase
+      .from('reservations')
+      .insert({
+        code,
+        client_id: r.clientId,
+        check_in: r.checkIn,
+        check_out: r.checkOut,
+        check_in_time: r.checkInTime,
+        check_out_time: r.checkOutTime,
+        nights: r.nights,
+        total: r.total,
+        status: 'debt',
+        created_at: today,
+      })
+      .select()
+      .single();
+
+    if (error || !resData) return;
+    const resId = (resData as Record<string, unknown>).id as string;
+
+    if (r.rooms.length > 0) {
+      await supabase.from('reservation_rooms').insert(
+        r.rooms.map((room) => ({
+          reservation_id: resId,
+          room_id: room.roomId,
+          price_per_night: room.pricePerNight,
+        })),
+      );
+    }
+
+    if (r.services.length > 0) {
+      await supabase.from('reservation_services').insert(
+        r.services.map((svc) => ({
+          reservation_id: resId,
+          service_id: svc.serviceId,
+          quantity: svc.quantity,
+          unit_price: svc.unitPrice,
+        })),
+      );
+    }
+
+    let payments: Payment[] = [];
+    if (r.payments.length > 0) {
+      const { data: payData } = await supabase
+        .from('payments')
+        .insert(
+          r.payments.map((p) => ({
+            reservation_id: resId,
+            amount: p.amount,
+            date: p.date,
+            note: p.note || null,
+          })),
+        )
+        .select();
+      if (payData) {
+        payments = (payData as Record<string, unknown>[]).map((p) => ({
+          id: p.id as string,
+          amount: p.amount as number,
+          date: p.date as string,
+          note: (p.note as string) || undefined,
+        }));
+      }
+    }
+
+    const newRes: Reservation = {
+      id: resId,
+      code,
+      clientId: r.clientId,
+      rooms: r.rooms,
+      services: r.services,
+      checkIn: r.checkIn,
+      checkOut: r.checkOut,
+      checkInTime: r.checkInTime,
+      checkOutTime: r.checkOutTime,
+      nights: r.nights,
+      total: r.total,
+      payments,
+      status: 'debt',
+      createdAt: today,
+    };
+    newRes.status = deriveStatus(newRes.total, newRes.payments, newRes);
+
+    set((s) => ({ reservations: [newRes, ...s.reservations] }));
+  },
+
+  updateReservation: async (id, patch) => {
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.clientId !== undefined) dbPatch.client_id = patch.clientId;
+    if (patch.checkIn !== undefined) dbPatch.check_in = patch.checkIn;
+    if (patch.checkOut !== undefined) dbPatch.check_out = patch.checkOut;
+    if (patch.checkInTime !== undefined) dbPatch.check_in_time = patch.checkInTime;
+    if (patch.checkOutTime !== undefined) dbPatch.check_out_time = patch.checkOutTime;
+    if (patch.nights !== undefined) dbPatch.nights = patch.nights;
+    if (patch.total !== undefined) dbPatch.total = patch.total;
+    if (patch.status !== undefined) dbPatch.status = patch.status;
+
+    if (Object.keys(dbPatch).length > 0) {
+      await supabase.from('reservations').update(dbPatch).eq('id', id);
+    }
+
+    if (patch.rooms !== undefined) {
+      await supabase.from('reservation_rooms').delete().eq('reservation_id', id);
+      if (patch.rooms.length > 0) {
+        await supabase.from('reservation_rooms').insert(
+          patch.rooms.map((r) => ({
+            reservation_id: id,
+            room_id: r.roomId,
+            price_per_night: r.pricePerNight,
+          })),
+        );
+      }
+    }
+
+    if (patch.services !== undefined) {
+      await supabase.from('reservation_services').delete().eq('reservation_id', id);
+      if (patch.services.length > 0) {
+        await supabase.from('reservation_services').insert(
+          patch.services.map((s) => ({
+            reservation_id: id,
+            service_id: s.serviceId,
+            quantity: s.quantity,
+            unit_price: s.unitPrice,
+          })),
+        );
+      }
+    }
+
+    if (patch.payments !== undefined) {
+      const existing = get().reservations.find((r) => r.id === id);
+      const existingIds = new Set((existing?.payments ?? []).map((p) => p.id));
+      const newPayments = patch.payments.filter(
+        (p) => !existingIds.has(p.id) || p.id.startsWith('pay-'),
+      );
+      for (const p of newPayments) {
+        await supabase.from('payments').insert({
+          reservation_id: id,
+          amount: p.amount,
+          date: p.date,
+          note: p.note || null,
+        });
+      }
+    }
+
+    set((s) => ({
+      reservations: s.reservations.map((r) => {
+        if (r.id !== id) return r;
+        const merged = { ...r, ...patch };
+        merged.status = deriveStatus(merged.total, merged.payments, merged);
+        return merged;
+      }),
+    }));
+  },
+
+  deleteReservation: async (id) => {
+    await supabase.from('reservations').delete().eq('id', id);
+    set((s) => ({ reservations: s.reservations.filter((r) => r.id !== id) }));
+  },
+
+  addPayment: async (resId, amount, note) => {
+    const { data: payData } = await supabase
+      .from('payments')
+      .insert({
+        reservation_id: resId,
+        amount,
+        date: new Date().toISOString().slice(0, 10),
+        note: note || null,
+      })
+      .select()
+      .single();
+
+    if (!payData) return;
+    const payment: Payment = {
+      id: (payData as Record<string, unknown>).id as string,
+      amount: (payData as Record<string, unknown>).amount as number,
+      date: (payData as Record<string, unknown>).date as string,
+      note: ((payData as Record<string, unknown>).note as string) || undefined,
+    };
+
+    set((s) => ({
+      reservations: s.reservations.map((r) => {
+        if (r.id !== resId) return r;
+        const payments = [...r.payments, payment];
+        const merged = { ...r, payments };
+        merged.status = deriveStatus(merged.total, payments, merged);
+        return merged;
+      }),
+    }));
+  },
+
+  // ── WORKERS ──────────────────────────────────────────────────────────────
+
+  addWorker: async (w) => {
+    const { data, error } = await supabase
+      .from('workers')
+      .insert({
+        name: w.name,
+        birth_date: w.birthDate || null,
+        cin: w.cin || null,
+        phone: w.phone,
+        role: w.role,
+        start_date: w.startDate,
+        has_salary: w.hasSalary,
+        salary_type: w.salaryType || null,
+        salary_amount: w.salaryAmount || null,
+        has_account: w.hasAccount,
+        permissions: w.permissions || {},
+        active: w.active ?? true,
+      })
+      .select()
+      .single();
+
+    if (error || !data) return;
+    const newId = (data as Record<string, unknown>).id as string;
+
+    if (w.hasAccount && w.account) {
+      const { error: rpcError } = await supabase.rpc('create_worker_account', {
+        p_worker_id: newId,
+        p_email: w.account.email,
+        p_username: w.account.username,
+        p_password: w.account.password,
+        p_name: w.name,
+      });
+      if (rpcError) console.error('create_worker_account error:', rpcError);
+    }
+
+    const worker: Worker = {
+      id: newId,
+      name: w.name,
+      birthDate: w.birthDate,
+      cin: w.cin,
+      phone: w.phone,
+      role: w.role,
+      startDate: w.startDate,
+      hasSalary: w.hasSalary,
+      salaryType: w.salaryType,
+      salaryAmount: w.salaryAmount,
+      hasAccount: w.hasAccount,
+      account: w.hasAccount && w.account
+        ? { email: w.account.email, username: w.account.username, password: '' }
+        : undefined,
+      permissions: w.permissions || {},
+      advances: [],
+      absences: [],
+      payments: [],
+      active: w.active ?? true,
+    };
+
+    // Add role to local list if not present
+    if (!get().roles.includes(w.role)) {
+      set((s) => ({ roles: [...s.roles, w.role] }));
+    }
+    set((s) => ({ workers: [...s.workers, worker] }));
+  },
+
+  updateWorker: async (id, patch) => {
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.name !== undefined) dbPatch.name = patch.name;
+    if (patch.birthDate !== undefined) dbPatch.birth_date = patch.birthDate || null;
+    if (patch.cin !== undefined) dbPatch.cin = patch.cin || null;
+    if (patch.phone !== undefined) dbPatch.phone = patch.phone;
+    if (patch.role !== undefined) dbPatch.role = patch.role;
+    if (patch.startDate !== undefined) dbPatch.start_date = patch.startDate;
+    if (patch.hasSalary !== undefined) dbPatch.has_salary = patch.hasSalary;
+    if (patch.salaryType !== undefined) dbPatch.salary_type = patch.salaryType || null;
+    if (patch.salaryAmount !== undefined) dbPatch.salary_amount = patch.salaryAmount || null;
+    if (patch.hasAccount !== undefined) dbPatch.has_account = patch.hasAccount;
+    if (patch.active !== undefined) dbPatch.active = patch.active;
+
+    if (Object.keys(dbPatch).length > 0) {
+      await supabase.from('workers').update(dbPatch).eq('id', id);
+    }
+
+    if (patch.role && !get().roles.includes(patch.role)) {
+      set((s) => ({ roles: [...s.roles, patch.role as string] }));
+    }
+    set((s) => ({ workers: s.workers.map((w) => (w.id === id ? { ...w, ...patch } : w)) }));
+  },
+
+  deleteWorker: async (id) => {
+    await supabase.from('workers').delete().eq('id', id);
+    set((s) => ({ workers: s.workers.filter((w) => w.id !== id) }));
+  },
+
+  addWorkerAdvance: async (workerId, a) => {
+    const { data } = await supabase
+      .from('worker_advances')
+      .insert({
+        worker_id: workerId,
+        date: a.date,
+        description: a.description || null,
+        amount: a.amount,
+        deducted: false,
+      })
+      .select()
+      .single();
+    if (!data) return;
+    const advance: Advance = {
+      id: (data as Record<string, unknown>).id as string,
+      date: a.date,
+      description: a.description,
+      amount: a.amount,
+      deducted: false,
+    };
+    set((s) => ({
+      workers: s.workers.map((w) =>
+        w.id === workerId ? { ...w, advances: [...w.advances, advance] } : w,
+      ),
+    }));
+  },
+
+  addWorkerAbsence: async (workerId, a) => {
+    const { data } = await supabase
+      .from('worker_absences')
+      .insert({
+        worker_id: workerId,
+        date: a.date,
+        description: a.description || null,
+        cost: a.cost,
+      })
+      .select()
+      .single();
+    if (!data) return;
+    const absence: Absence = {
+      id: (data as Record<string, unknown>).id as string,
+      date: a.date,
+      description: a.description,
+      cost: a.cost,
+    };
+    set((s) => ({
+      workers: s.workers.map((w) =>
+        w.id === workerId ? { ...w, absences: [...w.absences, absence] } : w,
+      ),
+    }));
+  },
+
+  addWorkerPayment: async (workerId, p) => {
+    const { data } = await supabase
+      .from('worker_payments')
+      .insert({
+        worker_id: workerId,
+        date: p.date,
+        amount: p.amount,
+        description: p.description || null,
+      })
+      .select()
+      .single();
+    if (!data) return;
+
+    // Mark all pending advances as deducted
+    await supabase
+      .from('worker_advances')
+      .update({ deducted: true })
+      .eq('worker_id', workerId)
+      .eq('deducted', false);
+
+    const payment: WorkerPayment = {
+      id: (data as Record<string, unknown>).id as string,
+      date: p.date,
+      amount: p.amount,
+      description: p.description,
+    };
+    set((s) => ({
+      workers: s.workers.map((w) =>
+        w.id === workerId
+          ? {
+              ...w,
+              payments: [...w.payments, payment],
+              advances: w.advances.map((adv) => ({ ...adv, deducted: true })),
+            }
+          : w,
+      ),
+    }));
+  },
+
+  setWorkerPermissions: async (workerId, perms) => {
+    await supabase.from('workers').update({ permissions: perms }).eq('id', workerId);
+    set((s) => ({
+      workers: s.workers.map((w) => (w.id === workerId ? { ...w, permissions: perms } : w)),
+    }));
+  },
+
+  addRole: async (name) => {
+    if (get().roles.includes(name)) return;
+    set((s) => ({ roles: [...s.roles, name] }));
+  },
+
+  // ── EXPENSES ─────────────────────────────────────────────────────────────
+
+  addExpense: async (e) => {
+    const { data, error } = await supabase
+      .from('expenses')
+      .insert({
+        name: e.name,
+        category_id: e.categoryId,
+        description: e.description || null,
+        amount: e.amount,
+        date: e.date,
+      })
+      .select()
+      .single();
+    if (error || !data) return;
+    const expense: Expense = {
+      ...e,
+      id: (data as Record<string, unknown>).id as string,
+    };
+    set((s) => ({ expenses: [expense, ...s.expenses] }));
+  },
+
+  updateExpense: async (id, patch) => {
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.name !== undefined) dbPatch.name = patch.name;
+    if (patch.categoryId !== undefined) dbPatch.category_id = patch.categoryId;
+    if (patch.description !== undefined) dbPatch.description = patch.description || null;
+    if (patch.amount !== undefined) dbPatch.amount = patch.amount;
+    if (patch.date !== undefined) dbPatch.date = patch.date;
+    await supabase.from('expenses').update(dbPatch).eq('id', id);
+    set((s) => ({ expenses: s.expenses.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
+  },
+
+  deleteExpense: async (id) => {
+    await supabase.from('expenses').delete().eq('id', id);
+    set((s) => ({ expenses: s.expenses.filter((x) => x.id !== id) }));
+  },
+
+  addExpenseCategory: async (name) => {
+    const { data, error } = await supabase
+      .from('expense_categories')
+      .insert({ name })
+      .select()
+      .single();
+    if (error || !data) return;
+    set((s) => ({
+      expenseCategories: [
+        ...s.expenseCategories,
+        { id: (data as Record<string, unknown>).id as string, name },
+      ],
+    }));
+  },
+
+  deleteExpenseCategory: async (id) => {
+    await supabase.from('expense_categories').delete().eq('id', id);
+    set((s) => ({ expenseCategories: s.expenseCategories.filter((c) => c.id !== id) }));
+  },
+
+  // ── MAINTENANCES ─────────────────────────────────────────────────────────
+
+  addMaintenance: async (m) => {
+    const { data, error } = await supabase
+      .from('maintenances')
+      .insert({
+        room_id: m.roomId,
+        name: m.name,
+        cost: m.cost,
+        date: m.date,
+        description: m.description || null,
+      })
+      .select()
+      .single();
+    if (error || !data) return;
+    const maintenance: Maintenance = {
+      ...m,
+      id: (data as Record<string, unknown>).id as string,
+    };
+    set((s) => ({ maintenances: [maintenance, ...s.maintenances] }));
+  },
+
+  deleteMaintenance: async (id) => {
+    await supabase.from('maintenances').delete().eq('id', id);
+    set((s) => ({ maintenances: s.maintenances.filter((m) => m.id !== id) }));
+  },
+
+  // ── CASH ─────────────────────────────────────────────────────────────────
+
+  addCashTransaction: async (t) => {
+    const { data, error } = await supabase
+      .from('cash_transactions')
+      .insert({
+        type: t.type,
+        amount: t.amount,
+        description: t.description,
+        date: t.date,
+      })
+      .select()
+      .single();
+    if (error || !data) return;
+    const tx: CashTransaction = {
+      ...t,
+      id: (data as Record<string, unknown>).id as string,
+    };
+    set((s) => ({ cashTransactions: [tx, ...s.cashTransactions] }));
+  },
+
+  // ── SETTINGS / DATA ───────────────────────────────────────────────────────
+
+  updateStoreInfo: async (patch) => {
+    const newInfo = { ...get().storeInfo, ...patch };
+    await supabase
+      .from('settings')
+      .update({
+        name: newInfo.name,
+        logo_url: newInfo.logo,
+        description: newInfo.description,
+        email: newInfo.email,
+        phone: newInfo.phone,
+        address: newInfo.address,
+        nif: newInfo.nif,
+        nis: newInfo.nis,
+        article: newInfo.article,
+        rc: newInfo.rc,
+      })
+      .neq('id', '00000000-0000-0000-0000-000000000000');
+    set((s) => ({ storeInfo: { ...s.storeInfo, ...patch } }));
+  },
+
+  exportData: () => {
+    const s = get();
+    const snapshot = {
+      storeInfo: s.storeInfo,
+      clients: s.clients,
+      floors: s.floors,
+      categories: s.categories,
+      rooms: s.rooms,
+      services: s.services,
+      reservations: s.reservations,
+      workers: s.workers,
+      expenses: s.expenses,
+      expenseCategories: s.expenseCategories,
+      maintenances: s.maintenances,
+      cashTransactions: s.cashTransactions,
+      roles: s.roles,
+    };
+    return JSON.stringify(snapshot, null, 2);
+  },
+
+  importData: (json) => {
+    try {
+      const d = JSON.parse(json);
+      set({
+        storeInfo: d.storeInfo ?? get().storeInfo,
+        clients: d.clients ?? [],
+        floors: d.floors ?? [],
+        categories: d.categories ?? [],
+        rooms: d.rooms ?? [],
+        services: d.services ?? [],
+        reservations: d.reservations ?? [],
+        workers: d.workers ?? [],
+        expenses: d.expenses ?? [],
+        expenseCategories: d.expenseCategories ?? [],
+        maintenances: d.maintenances ?? [],
+        cashTransactions: d.cashTransactions ?? [],
+        roles: d.roles ?? [],
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  resetData: () => set({ ...createInitialData(), storeInfo: STORE_INFO }),
+}));
+
+// ─── Permission helpers (unchanged) ────────────────────────────────────────
+
+export function useCurrentPermissions(): Permissions | null {
+  const user = useApp((s) => s.user);
+  const workers = useApp((s) => s.workers);
+  if (!user || user.role === 'admin') return null;
+  const worker = workers.find((w) => w.id === user.workerId);
+  return worker?.permissions ?? {};
+}
+
+export function canAccess(perms: Permissions | null, module: ModuleKey): boolean {
+  if (perms === null) return true;
+  const actions = perms[module];
+  return !!actions && actions.length > 0;
+}
+
+export function can(perms: Permissions | null, module: ModuleKey, action: string): boolean {
+  if (perms === null) return true;
+  return !!perms[module]?.includes(action as never);
+}
