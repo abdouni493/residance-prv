@@ -17,6 +17,9 @@ import { TextField, SegmentedControl } from '@/components/ui/Field';
 import { ResStatusBadge } from '@/components/ResStatusBadge';
 import { ReservationWizard } from '@/components/reservations/ReservationWizard';
 import { CalendarTimeline } from '@/components/reservations/CalendarTimeline';
+import {
+  AlertFilterBar, ReservationAlertBanner, buildAlertIndex, type AlertFilterValue,
+} from '@/components/reservations/reservationAlerts';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { reservationPaid, reservationRemaining } from '@/store/selectors';
 import { staggerContainer, listItem } from '@/animations';
@@ -48,6 +51,7 @@ export default function Reservations() {
   const [search, setSearch] = useState('');
   const [period, setPeriod] = useState<Period>('all');
   const [status, setStatus] = useState<StatusFilter>('all');
+  const [alertFilter, setAlertFilter] = useState<AlertFilterValue | null>(null);
 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<Reservation | null>(null);
@@ -75,9 +79,17 @@ export default function Reservations() {
     return null;
   }, [period, today]);
 
+  // Reservation alerts (soon / today / overdue for activation & checkout)
+  const alertIndex = useMemo(() => buildAlertIndex(data.reservations, today), [data.reservations, today]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return data.reservations.filter((r) => {
+      if (alertFilter) {
+        const a = alertIndex.map.get(r.id);
+        if (!a) return false;
+        if (alertFilter !== 'all' && a.type !== alertFilter) return false;
+      }
       if (status !== 'all' && r.status !== status) return false;
       if (periodRange && !rangesOverlap(r.checkIn, r.checkOut, periodRange[0], periodRange[1])) return false;
       if (q) {
@@ -87,7 +99,14 @@ export default function Reservations() {
       }
       return true;
     });
-  }, [data, search, status, periodRange]);
+  }, [data, search, status, periodRange, alertFilter, alertIndex]);
+
+  // Selecting an alert pill clears the status/period filters so every matching
+  // reservation is shown across all cases.
+  const handleAlertFilter = (v: AlertFilterValue | null) => {
+    setAlertFilter(v);
+    if (v) { setStatus('all'); setPeriod('all'); }
+  };
 
   const canDelete = can(perms, 'reservations', 'delete');
 
@@ -103,6 +122,12 @@ export default function Reservations() {
 
   const handleActivate = async () => {
     if (!activateFor) return;
+    // Guard: cannot activate before the check-in date.
+    if (today < activateFor.checkIn) {
+      toast.error(t('res.activateBlocked', { date: formatDate(activateFor.checkIn, lang) }));
+      setActivateFor(null);
+      return;
+    }
     await updateReservation(activateFor.id, { status: 'active' });
     toast.success(t('toast.updated'));
     setActivateFor(null);
@@ -133,7 +158,7 @@ export default function Reservations() {
         <SearchInput value={search} onChange={setSearch} placeholder={t('res.searchPlaceholder')} className="flex-1" />
         <SegmentedControl<Period>
           value={period}
-          onChange={setPeriod}
+          onChange={(v) => { setPeriod(v); setAlertFilter(null); }}
           size="sm"
           options={[
             { value: 'today', label: t('common.today') },
@@ -144,7 +169,7 @@ export default function Reservations() {
         />
         <SegmentedControl<StatusFilter>
           value={status}
-          onChange={setStatus}
+          onChange={(v) => { setStatus(v); setAlertFilter(null); }}
           size="sm"
           options={[
             { value: 'all', label: t('res.filterAll') },
@@ -156,6 +181,14 @@ export default function Reservations() {
           ]}
         />
       </div>
+
+      {/* Alert filter bar — pulses when there are reservations needing action */}
+      <AlertFilterBar
+        counts={alertIndex.counts}
+        total={alertIndex.total}
+        value={alertFilter}
+        onChange={handleAlertFilter}
+      />
 
       {filtered.length === 0 ? (
         <EmptyState
@@ -169,6 +202,11 @@ export default function Reservations() {
           <AnimatePresence>
             {filtered.map((r) => {
               const remaining = reservationRemaining(r);
+              const alert = alertIndex.map.get(r.id);
+              const canEdit = can(perms, 'reservations', 'edit');
+              // Date guards: can't activate before check-in, can't close before check-out.
+              const canActivateNow = r.status === 'pending' && today >= r.checkIn;
+              const canTerminerNow = r.status === 'active' && today >= r.checkOut;
               return (
                 <motion.div key={r.id} variants={listItem} layout exit={{ opacity: 0, scale: 0.95 }}>
                   <GradientCard
@@ -180,6 +218,23 @@ export default function Reservations() {
                       <span className="text-sm font-bold text-sky-200 truncate">{r.code}</span>
                       <ResStatusBadge status={r.status} dark />
                     </div>
+
+                    {/* Alert banner — clear, animated, tells the user what to do.
+                        The action button only appears once the date allows it
+                        (today/overdue alerts), enforcing the activation/closure guards. */}
+                    {alert && (
+                      <div className="mt-3">
+                        <ReservationAlertBanner
+                          alert={alert}
+                          canAct={canEdit && alert.urgent}
+                          onAction={
+                            alert.action === 'activate'
+                              ? () => setActivateFor(r)
+                              : () => setClotureFor(r)
+                          }
+                        />
+                      </div>
+                    )}
 
                     {/* Info */}
                     <div className="mt-3 space-y-1.5">
@@ -247,22 +302,24 @@ export default function Reservations() {
                           <CreditCard size={15} />
                         </button>
                       )}
-                      {/* "Terminer" for active reservations */}
+                      {/* "Terminer" for active reservations — locked until check-out date */}
                       {r.status === 'active' && can(perms, 'reservations', 'edit') && (
                         <button
                           onClick={() => setClotureFor(r)}
-                          className="btn-card-action btn-action-pay"
-                          title={t('res.cloture')}
+                          disabled={!canTerminerNow}
+                          className="btn-card-action btn-action-pay disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:transform-none"
+                          title={canTerminerNow ? t('res.cloture') : t('res.terminateBlocked', { date: formatDate(r.checkOut, lang) })}
                         >
                           <CheckCircle2 size={15} />
                         </button>
                       )}
-                      {/* "Activer" for pending reservations */}
+                      {/* "Activer" for pending reservations — locked until check-in date */}
                       {r.status === 'pending' && can(perms, 'reservations', 'edit') && (
                         <button
                           onClick={() => setActivateFor(r)}
-                          className="btn-card-action btn-action-edit"
-                          title={t('res.activate')}
+                          disabled={!canActivateNow}
+                          className="btn-card-action btn-action-edit disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:transform-none"
+                          title={canActivateNow ? t('res.activate') : t('res.activateBlocked', { date: formatDate(r.checkIn, lang) })}
                         >
                           <PlayCircle size={15} />
                         </button>
@@ -350,6 +407,11 @@ function ClotureModal({ reservation, onClose }: { reservation: Reservation | nul
 
   const handleConfirm = async () => {
     if (!r) return;
+    // Guard: cannot close a reservation before its check-out date.
+    if (today < r.checkOut) {
+      toast.error(t('res.terminateBlocked', { date: formatDate(r.checkOut, lang) }));
+      return;
+    }
     const updatedTotal = r.total + lateNum;
     if (payNum > 0) {
       const note = lateNights > 0

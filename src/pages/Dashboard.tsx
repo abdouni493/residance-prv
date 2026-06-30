@@ -4,7 +4,7 @@ import {
   TrendingUp, TrendingDown, Wallet, AlertCircle, Building2, CalendarCheck,
   PieChart as PieIcon, Wrench, Users, HardHat, Sparkles, CalendarDays,
   LayoutDashboard, Bell, Receipt, ArrowDownLeft, ArrowUpRight, Phone,
-  Flag, Clock, AlarmClock, AlertTriangle, BedDouble,
+  BedDouble,
 } from 'lucide-react';
 import { useAppData } from '@/store/hooks';
 import { useI18n } from '@/i18n';
@@ -17,8 +17,11 @@ import { SectionCard } from '@/components/ui/GradientCard';
 import { Badge } from '@/components/ui/Badge';
 import { PageHeader } from '@/components/ui/Misc';
 import { RevenueAreaChart, CountBarChart, HorizontalBars, DonutChart, ChartLegend } from '@/components/ui/Charts';
+import {
+  buildAlertIndex, ALERT_META, ALERT_ORDER, alertTone, type ReservationAlertType,
+} from '@/components/reservations/reservationAlerts';
 import { staggerContainer, listItem } from '@/animations';
-import { formatDA, formatDate, clamp, addDaysISO } from '@/lib/utils';
+import { formatDA, formatDate, clamp } from '@/lib/utils';
 import { clientName, reservationRoomLabels, expenseCategoryName, clientById } from '@/lib/lookups';
 import { ResStatusBadge } from '@/components/ResStatusBadge';
 import type { Reservation } from '@/types';
@@ -81,28 +84,25 @@ export default function Dashboard() {
 
   const hasAlerts = debtClients.length || expiringToday.length || maintRooms.length;
 
-  // Imminent / overdue reservation alerts
-  const in3days = addDaysISO(today, 3);
-
-  const soonToActivate = useMemo(() => {
-    return data.reservations
-      .filter((r) => r.checkIn >= today && r.checkIn <= in3days && r.status !== 'cancelled')
-      .sort((a, b) => a.checkIn.localeCompare(b.checkIn));
-  }, [data.reservations, today, in3days]);
-
-  const overdueActivation = useMemo(() => {
-    return data.reservations.filter((r) => r.checkIn < today && r.status === 'debt');
+  // Imminent / today / overdue reservation alerts (shared engine with Reservations page)
+  const resAlertGroups = useMemo(() => {
+    const { map } = buildAlertIndex(data.reservations, today);
+    const groups: Record<ReservationAlertType, Reservation[]> = {
+      activateOverdue: [], activateToday: [], activateSoon: [],
+      checkoutOverdue: [], checkoutToday: [], checkoutSoon: [],
+    };
+    for (const r of data.reservations) {
+      const a = map.get(r.id);
+      if (a) groups[a.type].push(r);
+    }
+    for (const key of Object.keys(groups) as ReservationAlertType[]) {
+      const dateField = key.startsWith('activate') ? 'checkIn' : 'checkOut';
+      groups[key].sort((a, b) => a[dateField].localeCompare(b[dateField]));
+    }
+    return groups;
   }, [data.reservations, today]);
 
-  const soonEnding = useMemo(() => {
-    return data.reservations
-      .filter((r) => r.checkOut >= today && r.checkOut <= in3days && r.status === 'active')
-      .sort((a, b) => a.checkOut.localeCompare(b.checkOut));
-  }, [data.reservations, today, in3days]);
-
-  const overdueCheckout = useMemo(() => {
-    return data.reservations.filter((r) => r.checkOut < today && r.status === 'active');
-  }, [data.reservations, today]);
+  const totalResAlerts = ALERT_ORDER.reduce((s, k) => s + resAlertGroups[k].length, 0);
 
   return (
     <div>
@@ -128,49 +128,31 @@ export default function Dashboard() {
         />
       </motion.div>
 
-      {/* Reservation alerts — imminent / overdue */}
-      {(soonToActivate.length > 0 || overdueActivation.length > 0 || soonEnding.length > 0 || overdueCheckout.length > 0) && (
-        <div className="space-y-4 mb-6">
-          <ReservationAlertGroup
-            title="Arrivées imminentes"
-            icon={<Bell size={16} />}
-            color="sky"
-            reservations={soonToActivate}
-            dateField="checkIn"
-            data={data}
-            lang={lang}
-            onSelect={setDetailRes}
-          />
-          <ReservationAlertGroup
-            title="Arrivées en retard"
-            icon={<AlertTriangle size={16} />}
-            color="orange"
-            reservations={overdueActivation}
-            dateField="checkIn"
-            data={data}
-            lang={lang}
-            onSelect={setDetailRes}
-          />
-          <ReservationAlertGroup
-            title="Départs imminents"
-            icon={<Clock size={16} />}
-            color="violet"
-            reservations={soonEnding}
-            dateField="checkOut"
-            data={data}
-            lang={lang}
-            onSelect={setDetailRes}
-          />
-          <ReservationAlertGroup
-            title="Départs en retard"
-            icon={<AlarmClock size={16} />}
-            color="rose"
-            reservations={overdueCheckout}
-            dateField="checkOut"
-            data={data}
-            lang={lang}
-            onSelect={setDetailRes}
-          />
+      {/* Reservation alerts — today / overdue / imminent (activation & checkout) */}
+      {totalResAlerts > 0 && (
+        <div className="mb-6 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-rose-50/40 p-4 shadow-sm">
+          <div className="mb-4 flex items-center gap-2.5">
+            <span className="relative grid h-9 w-9 place-items-center rounded-xl bg-amber-500 text-white shadow-sm">
+              <span className="absolute inset-0 rounded-xl bg-amber-500 opacity-40 animate-ping" />
+              <Bell size={17} className="relative" />
+            </span>
+            <div>
+              <p className="text-sm font-bold text-amber-700">{t('dash.resAlertsTitle')}</p>
+              <p className="text-[11px] text-amber-600">{t('resAlert.filterHint', { count: totalResAlerts })}</p>
+            </div>
+          </div>
+          <div className="space-y-4">
+            {ALERT_ORDER.map((type) => (
+              <ReservationAlertGroup
+                key={type}
+                type={type}
+                reservations={resAlertGroups[type]}
+                data={data}
+                lang={lang}
+                onSelect={setDetailRes}
+              />
+            ))}
+          </div>
         </div>
       )}
 
@@ -346,32 +328,36 @@ function AlertRow({
   );
 }
 
-const alertColors: Record<string, { section: string; card: string; icon: string }> = {
-  sky:    { section: 'border-sky-200 bg-sky-50',    card: 'border-sky-200 bg-white/70 hover:bg-sky-50',    icon: 'text-sky-600' },
-  orange: { section: 'border-orange-200 bg-orange-50', card: 'border-orange-200 bg-white/70 hover:bg-orange-50', icon: 'text-orange-600' },
-  violet: { section: 'border-violet-200 bg-violet-50', card: 'border-violet-200 bg-white/70 hover:bg-violet-50', icon: 'text-violet-600' },
-  rose:   { section: 'border-rose-200 bg-rose-50',  card: 'border-rose-200 bg-white/70 hover:bg-rose-50',  icon: 'text-rose-600' },
-};
-
 function ReservationAlertGroup({
-  title, icon, color, reservations, dateField, data, lang, onSelect,
+  type, reservations, data, lang, onSelect,
 }: {
-  title: string;
-  icon: React.ReactNode;
-  color: string;
+  type: ReservationAlertType;
   reservations: Reservation[];
-  dateField: 'checkIn' | 'checkOut';
   data: ReturnType<typeof useAppData>;
   lang: 'fr' | 'ar';
   onSelect: (r: Reservation) => void;
 }) {
+  const { t } = useI18n();
   if (reservations.length === 0) return null;
-  const c = alertColors[color] ?? alertColors.sky;
+  const meta = ALERT_META[type];
+  const tone = alertTone(type);
+  const Icon = meta.icon;
+  const urgent = type.endsWith('Today') || type.endsWith('Overdue');
+
   return (
-    <div className={`rounded-2xl border ${c.section} p-4`}>
-      <div className={`flex items-center gap-2 mb-3 font-semibold text-sm ${c.icon}`}>
-        {icon} {title} <span className="ml-1 rounded-full bg-white/80 px-2 py-0.5 text-xs">{reservations.length}</span>
+    <div className={`rounded-2xl border p-4 ${tone.banner}`}>
+      <div className={`flex items-center gap-2 mb-1 font-bold text-sm ${tone.title}`}>
+        <span className="relative grid h-7 w-7 place-items-center rounded-lg text-white shrink-0" >
+          <span className={`absolute inset-0 rounded-lg ${tone.solid}`} />
+          {urgent && <span className={`absolute inset-0 rounded-lg opacity-40 animate-ping ${tone.solid}`} />}
+          <Icon size={14} className="relative" />
+        </span>
+        {t(meta.titleKey)}
+        <span className="ml-1 rounded-full bg-white/80 px-2 py-0.5 text-xs">{reservations.length}</span>
       </div>
+      <p className="mb-3 ml-9 text-[11px] text-slate-600">
+        {t(type.startsWith('activate') ? 'resAlert.actionActivate' : 'resAlert.actionCheckout')}
+      </p>
       <motion.div variants={staggerContainer} initial="initial" animate="animate" className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {reservations.map((r) => {
           const remaining = reservationRemaining(r);
@@ -381,7 +367,7 @@ function ReservationAlertGroup({
               key={r.id}
               variants={listItem}
               onClick={() => onSelect(r)}
-              className={`text-left rounded-xl border p-3 transition-colors cursor-pointer ${c.card}`}
+              className="text-left rounded-xl border border-white/60 bg-white/70 p-3 transition-colors cursor-pointer hover:bg-white"
             >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-bold text-ink-primary">{r.code}</span>
@@ -399,7 +385,7 @@ function ReservationAlertGroup({
                 {formatDate(r.checkIn, lang)} → {formatDate(r.checkOut, lang)}
               </div>
               {remaining > 0 && (
-                <p className="text-xs font-semibold text-amber-600 mt-1">Reste: {formatDA(remaining)}</p>
+                <p className="text-xs font-semibold text-amber-600 mt-1">{t('common.remaining')}: {formatDA(remaining)}</p>
               )}
             </motion.button>
           );

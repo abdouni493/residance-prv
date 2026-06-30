@@ -225,21 +225,46 @@ function dbToStoreInfo(row: Record<string, unknown>): StoreInfo {
   };
 }
 
-// ─── Status derivation ─────────────────────────────────────────────────────
+// ─── Status model ──────────────────────────────────────────────────────────
+//
+// A reservation has a LIFECYCLE status that the user advances manually:
+//   pending → active → (paid | debt)
+//
+//   • pending  — created with a future check-in; must be activated on/after
+//                the check-in date (Activer).
+//   • active   — stay in progress; must be terminated on/after the check-out
+//                date (Terminer), which then resolves to paid or debt.
+//   • paid     — terminated and fully settled.
+//   • debt     — terminated with a remaining balance (can still be paid off,
+//                which flips it back to paid).
+//   • cancelled — never changes automatically.
+//
+// Payment changes must NEVER move a reservation between lifecycle stages —
+// e.g. a fully-paid FUTURE reservation stays `pending`, not `paid`.
 
-function deriveStatus(
+function paymentsSum(payments: Payment[]): number {
+  return payments.reduce((s, p) => s + p.amount, 0);
+}
+
+/** Initial lifecycle status for a brand-new reservation, decided by START date. */
+function initialStatus(checkIn: string, today: string): Reservation['status'] {
+  return checkIn <= today ? 'active' : 'pending';
+}
+
+/**
+ * Reconcile ONLY the paid/debt distinction for an already-terminated
+ * reservation. Lifecycle statuses (pending / active / cancelled) are advanced
+ * explicitly by the user and are returned unchanged.
+ */
+function reconcilePaymentStatus(
+  status: Reservation['status'],
   total: number,
   payments: Payment[],
-  current: Reservation,
 ): Reservation['status'] {
-  if (current.status === 'cancelled') return 'cancelled';
-  const paid = payments.reduce((s, p) => s + p.amount, 0);
-  if (paid >= total) {
-    const today = new Date().toISOString().slice(0, 10);
-    const active = current.checkIn <= today && today < current.checkOut;
-    return active ? 'active' : 'paid';
+  if (status === 'paid' || status === 'debt') {
+    return paymentsSum(payments) >= total ? 'paid' : 'debt';
   }
-  return 'debt';
+  return status;
 }
 
 function nextResCode(reservations: Reservation[]): string {
@@ -768,6 +793,9 @@ export const useApp = create<AppState>()((set, get) => ({
     const code = nextResCode(get().reservations);
     const today = new Date().toISOString().slice(0, 10);
 
+    // Lifecycle status comes from the wizard (date-based); fall back defensively.
+    const status: Reservation['status'] = r.status ?? initialStatus(r.checkIn, today);
+
     const { data: resData, error } = await supabase
       .from('reservations')
       .insert({
@@ -779,7 +807,7 @@ export const useApp = create<AppState>()((set, get) => ({
         check_out_time: r.checkOutTime,
         nights: r.nights,
         total: r.total,
-        status: 'debt',
+        status,
         created_at: today,
       })
       .select()
@@ -845,15 +873,16 @@ export const useApp = create<AppState>()((set, get) => ({
       nights: r.nights,
       total: r.total,
       payments,
-      status: 'debt',
+      status,
       createdAt: today,
     };
-    newRes.status = deriveStatus(newRes.total, newRes.payments, newRes);
 
     set((s) => ({ reservations: [newRes, ...s.reservations] }));
   },
 
   updateReservation: async (id, patch) => {
+    const current = get().reservations.find((r) => r.id === id);
+
     const dbPatch: Record<string, unknown> = {};
     if (patch.clientId !== undefined) dbPatch.client_id = patch.clientId;
     if (patch.checkIn !== undefined) dbPatch.check_in = patch.checkIn;
@@ -862,7 +891,17 @@ export const useApp = create<AppState>()((set, get) => ({
     if (patch.checkOutTime !== undefined) dbPatch.check_out_time = patch.checkOutTime;
     if (patch.nights !== undefined) dbPatch.nights = patch.nights;
     if (patch.total !== undefined) dbPatch.total = patch.total;
-    if (patch.status !== undefined) dbPatch.status = patch.status;
+
+    // Resolve the status that must be persisted: an explicit transition wins;
+    // otherwise reconcile paid/debt from the (possibly updated) payments/total.
+    const effectiveTotal = patch.total ?? current?.total ?? 0;
+    const effectivePayments = patch.payments ?? current?.payments ?? [];
+    const finalStatus =
+      patch.status ??
+      (current ? reconcilePaymentStatus(current.status, effectiveTotal, effectivePayments) : undefined);
+    if (finalStatus !== undefined && finalStatus !== current?.status) {
+      dbPatch.status = finalStatus;
+    }
 
     if (Object.keys(dbPatch).length > 0) {
       await supabase.from('reservations').update(dbPatch).eq('id', id);
@@ -915,7 +954,10 @@ export const useApp = create<AppState>()((set, get) => ({
       reservations: s.reservations.map((r) => {
         if (r.id !== id) return r;
         const merged = { ...r, ...patch };
-        merged.status = deriveStatus(merged.total, merged.payments, merged);
+        // An explicit status in the patch is a manual transition (Activer /
+        // Terminer) and wins. Otherwise only the paid/debt split is reconciled.
+        merged.status =
+          patch.status ?? reconcilePaymentStatus(merged.status, merged.total, merged.payments);
         return merged;
       }),
     }));
@@ -946,15 +988,22 @@ export const useApp = create<AppState>()((set, get) => ({
       note: ((payData as Record<string, unknown>).note as string) || undefined,
     };
 
-    set((s) => ({
-      reservations: s.reservations.map((r) => {
-        if (r.id !== resId) return r;
-        const payments = [...r.payments, payment];
-        const merged = { ...r, payments };
-        merged.status = deriveStatus(merged.total, payments, merged);
-        return merged;
-      }),
-    }));
+    // Paying off a debt flips it to paid; a pending/active stay keeps its
+    // lifecycle status (an early payment never auto-activates/terminates).
+    // Persist the flip so it survives a refresh.
+    const current = get().reservations.find((r) => r.id === resId);
+    if (current) {
+      const payments = [...current.payments, payment];
+      const status = reconcilePaymentStatus(current.status, current.total, payments);
+      if (status !== current.status) {
+        await supabase.from('reservations').update({ status }).eq('id', resId);
+      }
+      set((s) => ({
+        reservations: s.reservations.map((r) =>
+          r.id === resId ? { ...r, payments, status } : r,
+        ),
+      }));
+    }
   },
 
   // ── WORKERS ──────────────────────────────────────────────────────────────
