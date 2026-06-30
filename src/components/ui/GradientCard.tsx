@@ -35,20 +35,31 @@ export function SectionCard({
   action,
   children,
   className,
+  dark = false,
+  style,
 }: {
   title?: ReactNode;
   icon?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  dark?: boolean;
+  style?: React.CSSProperties;
 } & HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('glass rounded-2xl border border-slate-200 shadow-card p-5', className)}>
+    <div
+      style={style}
+      className={cn(
+        'rounded-2xl shadow-xl p-5',
+        dark ? 'border border-white/10 text-white' : 'glass border border-slate-200',
+        className,
+      )}
+    >
       {(title || action) && (
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
-            {icon && <span className="text-brand-400">{icon}</span>}
-            {title && <h3 className="font-semibold text-ink-primary">{title}</h3>}
+            {icon && <span className={dark ? 'text-sky-300' : 'text-brand-400'}>{icon}</span>}
+            {title && <h3 className={cn('font-semibold', dark ? 'text-white' : 'text-ink-primary')}>{title}</h3>}
           </div>
           {action}
         </div>

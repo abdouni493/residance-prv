@@ -97,14 +97,22 @@ export default function Caisse() {
           </div>
         </motion.div>
 
-        <SectionCard className="flex flex-col justify-center">
-          <div className="flex items-center gap-2 text-emerald-600"><TrendingUp size={18} /><span className="text-sm font-medium">{t('caisse.totalIn')}</span></div>
-          <p className="mt-1 text-2xl font-extrabold text-ink-primary"><AnimatedNumber value={recap.totalIn} format={formatDA} /></p>
+        <SectionCard
+          dark
+          style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+          className="flex flex-col justify-center"
+        >
+          <div className="flex items-center gap-2 text-emerald-305 text-emerald-300"><TrendingUp size={18} /><span className="text-sm font-medium">{t('caisse.totalIn')}</span></div>
+          <p className="mt-1 text-2xl font-extrabold text-white"><AnimatedNumber value={recap.totalIn} format={formatDA} /></p>
         </SectionCard>
 
-        <SectionCard className="flex flex-col justify-center">
-          <div className="flex items-center gap-2 text-rose-600"><TrendingDown size={18} /><span className="text-sm font-medium">{t('caisse.totalOut')}</span></div>
-          <p className="mt-1 text-2xl font-extrabold text-ink-primary"><AnimatedNumber value={recap.totalOut} format={formatDA} /></p>
+        <SectionCard
+          dark
+          style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+          className="flex flex-col justify-center"
+        >
+          <div className="flex items-center gap-2 text-rose-350 text-rose-300"><TrendingDown size={18} /><span className="text-sm font-medium">{t('caisse.totalOut')}</span></div>
+          <p className="mt-1 text-2xl font-extrabold text-white"><AnimatedNumber value={recap.totalOut} format={formatDA} /></p>
         </SectionCard>
       </div>
 
@@ -132,7 +140,12 @@ export default function Caisse() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Left: detail sections */}
         <div className="lg:col-span-2 space-y-4">
-          <SectionCard title={t('caisse.gains')} icon={<TrendingUp size={18} />}>
+          <SectionCard
+            dark
+            style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+            title={t('caisse.gains')}
+            icon={<TrendingUp size={18} />}
+          >
             {incomeItems.length === 0 ? <Empty /> : (
               <div className="space-y-2 max-h-72 overflow-y-auto">
                 {incomeItems.map((it) => (
@@ -142,7 +155,12 @@ export default function Caisse() {
             )}
           </SectionCard>
 
-          <SectionCard title={t('caisse.expensesSection')} icon={<TrendingDown size={18} />}>
+          <SectionCard
+            dark
+            style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+            title={t('caisse.expensesSection')}
+            icon={<TrendingDown size={18} />}
+          >
             <div className="space-y-3">
               <CatLine icon={<ShoppingCart size={15} />} label={t('caisse.generalExpenses')} total={recap.generalExpenses} breakdown={recap.generalByCategory} />
               <CatLine icon={<Wrench size={15} />} label={t('caisse.maintenances')} total={recap.maintenances} breakdown={recap.maintenanceByRoom} />
@@ -151,7 +169,12 @@ export default function Caisse() {
             </div>
           </SectionCard>
 
-          <SectionCard title={t('caisse.manualTx')} icon={<Wallet size={18} />}>
+          <SectionCard
+            dark
+            style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+            title={t('caisse.manualTx')}
+            icon={<Wallet size={18} />}
+          >
             {manualTx.length === 0 ? <Empty /> : (
               <div className="space-y-2">
                 {manualTx.map((tx) => (
@@ -164,15 +187,18 @@ export default function Caisse() {
 
         {/* Right: recap */}
         <div>
-          <div className="glass rounded-2xl border border-slate-200 shadow-card overflow-hidden sticky top-24">
-            <div className="bg-grad-primary px-5 py-4">
-              <p className="text-white/80 text-xs">{t('caisse.recap')}</p>
+          <div
+            className="rounded-2xl border border-white/10 shadow-xl overflow-hidden sticky top-24"
+            style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+          >
+            <div className="bg-white/10 px-5 py-4">
+              <p className="text-sky-200/80 text-xs">{t('caisse.recap')}</p>
               <p className="text-white text-sm font-semibold">{formatDate(from, lang)} → {formatDate(to, lang)}</p>
             </div>
             <div className="p-5 space-y-2.5 text-sm">
               <RecapLine label={t('caisse.reservationsIncome')} value={recap.reservationIncome} positive />
               <RecapLine label={t('caisse.manualDeposits')} value={recap.manualDeposits} positive />
-              <div className="border-t border-slate-200 pt-2.5 flex justify-between font-bold text-emerald-600">
+              <div className="border-t border-white/10 pt-2.5 flex justify-between font-bold text-emerald-300">
                 <span>{t('caisse.totalIn')}</span><span>+{formatDA(recap.totalIn)}</span>
               </div>
 
@@ -182,17 +208,17 @@ export default function Caisse() {
                 <RecapLine label={t('caisse.salaries')} value={recap.salaries} negative />
                 <RecapLine label={t('caisse.advances')} value={recap.advances} negative />
                 <RecapLine label={t('caisse.manualWithdrawals')} value={recap.manualWithdrawals} negative />
-                <div className="border-t border-slate-200 pt-2.5 flex justify-between font-bold text-rose-600">
+                <div className="border-t border-white/10 pt-2.5 flex justify-between font-bold text-rose-300">
                   <span>{t('caisse.totalOut')}</span><span>−{formatDA(recap.totalOut)}</span>
                 </div>
               </div>
 
-              <div className="border-t-2 border-brand-400/40 mt-2 pt-3 flex justify-between items-center">
-                <span className="font-bold text-ink-primary">{t('caisse.netBalance')}</span>
-                <span className={cn('text-xl font-extrabold', recap.net >= 0 ? 'text-emerald-600' : 'text-rose-600')}>{formatDA(recap.net)}</span>
+              <div className="border-t-2 border-white/20 mt-2 pt-3 flex justify-between items-center">
+                <span className="font-bold text-white">{t('caisse.netBalance')}</span>
+                <span className={cn('text-xl font-extrabold', recap.net >= 0 ? 'text-emerald-300' : 'text-rose-300')}>{formatDA(recap.net)}</span>
               </div>
-              <div className="flex justify-between items-center text-xs text-ink-muted">
-                <span>{t('caisse.balance')}</span><span className="font-semibold text-ink-secondary">{formatDA(balance)}</span>
+              <div className="flex justify-between items-center text-xs text-sky-200/70">
+                <span>{t('caisse.balance')}</span><span className="font-semibold text-white">{formatDA(balance)}</span>
               </div>
             </div>
           </div>
@@ -206,17 +232,17 @@ export default function Caisse() {
 
 function Empty() {
   const { t } = useI18n();
-  return <p className="text-sm text-ink-muted text-center py-6">{t('common.noData')}</p>;
+  return <p className="text-sm text-sky-200/60 text-center py-6">{t('common.noData')}</p>;
 }
 
 function Row({ label, sub, date, amount, positive }: { label: string; sub: string; date: string; amount: number; positive?: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-100/70 border border-slate-200 px-4 py-2.5">
+    <div className="flex items-center justify-between gap-2 rounded-xl bg-white/10 border border-white/10 px-4 py-2.5">
       <div className="min-w-0">
-        <p className="text-sm font-medium text-ink-primary truncate">{label}</p>
-        <p className="text-xs text-ink-muted truncate">{sub} · {date}</p>
+        <p className="text-sm font-medium text-white truncate">{label}</p>
+        <p className="text-xs text-sky-200/80 truncate">{sub} · {date}</p>
       </div>
-      <span className={cn('text-sm font-bold shrink-0', positive ? 'text-emerald-600' : 'text-rose-600')}>
+      <span className={cn('text-sm font-bold shrink-0', positive ? 'text-emerald-350 text-emerald-300' : 'text-rose-350 text-rose-300')}>
         {positive ? '+' : '−'}{formatDA(amount)}
       </span>
     </div>
@@ -225,24 +251,24 @@ function Row({ label, sub, date, amount, positive }: { label: string; sub: strin
 
 function SimpleLine({ icon, label, total }: { icon: React.ReactNode; label: string; total: number }) {
   return (
-    <div className="flex items-center justify-between rounded-xl bg-slate-100/70 border border-slate-200 px-4 py-2.5">
-      <span className="flex items-center gap-2 text-sm text-ink-primary"><span className="text-rose-600">{icon}</span> {label}</span>
-      <span className="text-sm font-bold text-rose-600">−{formatDA(total)}</span>
+    <div className="flex items-center justify-between rounded-xl bg-white/10 border border-white/10 px-4 py-2.5">
+      <span className="flex items-center gap-2 text-sm text-white"><span className="text-rose-300">{icon}</span> {label}</span>
+      <span className="text-sm font-bold text-rose-350 text-rose-300">−{formatDA(total)}</span>
     </div>
   );
 }
 
 function CatLine({ icon, label, total, breakdown }: { icon: React.ReactNode; label: string; total: number; breakdown: { name: string; total: number }[] }) {
   return (
-    <div className="rounded-xl bg-slate-100/70 border border-slate-200 px-4 py-2.5">
+    <div className="rounded-xl bg-white/10 border border-white/10 px-4 py-2.5">
       <div className="flex items-center justify-between">
-        <span className="flex items-center gap-2 text-sm text-ink-primary"><span className="text-rose-600">{icon}</span> {label}</span>
-        <span className="text-sm font-bold text-rose-600">−{formatDA(total)}</span>
+        <span className="flex items-center gap-2 text-sm text-white"><span className="text-rose-300">{icon}</span> {label}</span>
+        <span className="text-sm font-bold text-rose-350 text-rose-300">−{formatDA(total)}</span>
       </div>
       {breakdown.length > 0 && (
         <div className="mt-2 ps-6 space-y-1">
           {breakdown.map((b) => (
-            <div key={b.name} className="flex items-center justify-between text-xs text-ink-muted">
+            <div key={b.name} className="flex items-center justify-between text-xs text-sky-200/80">
               <span>• {b.name}</span><span>−{formatDA(b.total)}</span>
             </div>
           ))}
@@ -254,9 +280,9 @@ function CatLine({ icon, label, total, breakdown }: { icon: React.ReactNode; lab
 
 function RecapLine({ label, value, positive, negative }: { label: string; value: number; positive?: boolean; negative?: boolean }) {
   return (
-    <div className="flex justify-between text-ink-secondary">
+    <div className="flex justify-between text-slate-250 text-slate-200">
       <span>{label}</span>
-      <span className={cn('font-medium', positive ? 'text-emerald-600' : negative ? 'text-rose-600' : 'text-ink-primary')}>
+      <span className={cn('font-medium', positive ? 'text-emerald-305 text-emerald-300' : negative ? 'text-rose-350 text-rose-300' : 'text-white')}>
         {positive ? '+' : negative ? '−' : ''}{formatDA(value)}
       </span>
     </div>

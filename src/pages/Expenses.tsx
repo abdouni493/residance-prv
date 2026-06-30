@@ -51,6 +51,18 @@ export default function Expenses() {
     return [...map.entries()];
   }, [data.maintenances]);
 
+  const catSummary = useMemo(() => {
+    const total = data.expenses.reduce((s, e) => s + e.amount, 0);
+    return data.expenseCategories
+      .map((cat) => ({
+        name: cat.name,
+        value: data.expenses.filter((e) => e.categoryId === cat.id).reduce((s, e) => s + e.amount, 0),
+        total,
+      }))
+      .filter((c) => c.value > 0)
+      .sort((a, b) => b.value - a.value);
+  }, [data.expenses, data.expenseCategories]);
+
   return (
     <div>
       <PageHeader
@@ -71,6 +83,28 @@ export default function Expenses() {
           </>
         }
       />
+
+      {/* Category mini summary */}
+      {catSummary.length > 0 && tab === 'general' && (
+        <div className="mb-5 p-4 rounded-2xl border border-slate-200 bg-white space-y-2">
+          <p className="text-xs font-bold text-ink-muted uppercase tracking-wide mb-3">{t('common.category')} — {t('common.total')} {formatDA(catSummary[0]?.total ?? 0)}</p>
+          {catSummary.map((c, i) => (
+            <div key={c.name} className="flex items-center gap-3">
+              <span className="text-xs text-ink-secondary w-28 truncate shrink-0">{c.name}</span>
+              <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${c.total > 0 ? (c.value / c.total) * 100 : 0}%` }}
+                  transition={{ delay: i * 0.06, duration: 0.5 }}
+                  className="h-full rounded-full bg-rose-500"
+                  style={{ opacity: 0.65 + (1 - i / catSummary.length) * 0.35 }}
+                />
+              </div>
+              <span className="text-xs font-semibold text-rose-600 w-20 text-right shrink-0">−{formatDA(c.value)}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <Tabs<'general' | 'maintenance'>
@@ -97,26 +131,29 @@ export default function Expenses() {
             <AnimatePresence>
               {filteredExpenses.map((e) => (
                 <motion.div key={e.id} variants={listItem} layout exit="exit">
-                  <GradientCard className="p-5 h-full flex flex-col">
+                  <GradientCard
+                    className="p-5 h-full flex flex-col border border-white/10 shadow-xl"
+                    style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                  >
                     <div className="flex items-start gap-3">
-                      <div className="grid h-11 w-11 place-items-center rounded-xl bg-grad-warning text-white shrink-0"><ShoppingCart size={18} /></div>
+                      <div className="grid h-11 w-11 place-items-center rounded-xl bg-white/15 text-white shrink-0"><ShoppingCart size={18} /></div>
                       <div className="min-w-0 flex-1">
-                        <h3 className="font-bold text-ink-primary truncate">{e.name}</h3>
-                        <p className="text-xs text-ink-muted flex items-center gap-1 mt-0.5"><Tag size={11} /> {expenseCategoryName(data, e.categoryId)}</p>
+                        <h3 className="font-bold text-white truncate">{e.name}</h3>
+                        <p className="text-xs text-sky-200/80 flex items-center gap-1 mt-0.5"><Tag size={11} /> {expenseCategoryName(data, e.categoryId)}</p>
                       </div>
                     </div>
-                    {e.description && <p className="text-sm text-ink-secondary mt-3 line-clamp-2">{e.description}</p>}
-                    <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-3">
+                    {e.description && <p className="text-sm text-slate-200 mt-3 line-clamp-2">{e.description}</p>}
+                    <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3">
                       <div>
-                        <p className="text-lg font-extrabold text-rose-600">−{formatDA(e.amount)}</p>
-                        <p className="text-xs text-ink-muted">{formatDate(e.date, lang)}</p>
+                        <p className="text-lg font-extrabold text-rose-350 text-rose-300">−{formatDA(e.amount)}</p>
+                        <p className="text-xs text-slate-350">{formatDate(e.date, lang)}</p>
                       </div>
                       <div className="flex items-center gap-1.5">
                         {can(perms, 'expenses', 'edit') && (
-                          <button onClick={() => { setExpForm(e); setExpFormOpen(true); }} className="grid h-9 w-9 place-items-center rounded-lg text-ink-secondary hover:text-brand-600 hover:bg-slate-100 transition-colors"><Pencil size={15} /></button>
+                          <button onClick={() => { setExpForm(e); setExpFormOpen(true); }} className="btn-card-action btn-action-edit" title={t('common.edit')}><Pencil size={15} /></button>
                         )}
                         {can(perms, 'expenses', 'delete') && (
-                          <button onClick={() => setDelExp(e)} className="grid h-9 w-9 place-items-center rounded-lg text-ink-secondary hover:text-rose-600 hover:bg-rose-500/10 transition-colors"><Trash2 size={15} /></button>
+                          <button onClick={() => setDelExp(e)} className="btn-card-action btn-action-delete" title={t('common.delete')}><Trash2 size={15} /></button>
                         )}
                       </div>
                     </div>
@@ -133,22 +170,26 @@ export default function Expenses() {
           {maintByRoom.map(([roomId, list]) => {
             const total = list.reduce((s, m) => s + m.cost, 0);
             return (
-              <GradientCard key={roomId} className="p-5">
+              <GradientCard
+                key={roomId}
+                className="p-5 border border-white/10 shadow-xl"
+                style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+              >
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="flex items-center gap-2 font-bold text-ink-primary"><BedDouble size={18} className="text-brand-400" /> {t('nav.chambres')} {roomName(data, roomId)}</h3>
-                  <Stat label={t('common.total')} value={formatDA(total)} tone="danger" />
+                  <h3 className="flex items-center gap-2 font-bold text-white"><BedDouble size={18} className="text-sky-305 text-sky-300" /> {roomName(data, roomId)}</h3>
+                  <Stat label={t('common.total')} value={formatDA(total)} tone="danger" dark />
                 </div>
                 <div className="space-y-2">
                   {list.map((m) => (
-                    <div key={m.id} className="flex items-center justify-between rounded-xl bg-slate-100/70 border border-slate-200 px-4 py-2.5">
+                    <div key={m.id} className="flex items-center justify-between rounded-xl bg-white/10 border border-white/10 px-4 py-2.5">
                       <div>
-                        <p className="text-sm font-medium text-ink-primary">{m.name}</p>
-                        <p className="text-xs text-ink-muted">{m.description} · {formatDate(m.date, lang)}</p>
+                        <p className="text-sm font-medium text-white">{m.name}</p>
+                        <p className="text-xs text-sky-200/80">{m.description} · {formatDate(m.date, lang)}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-rose-600">−{formatDA(m.cost)}</span>
+                        <span className="text-sm font-semibold text-rose-355 text-rose-300">−{formatDA(m.cost)}</span>
                         {can(perms, 'expenses', 'delete') && (
-                          <button onClick={() => setDelMaint(m)} className="grid h-8 w-8 place-items-center rounded-lg text-ink-secondary hover:text-rose-600 hover:bg-rose-500/10 transition-colors"><Trash2 size={14} /></button>
+                          <button onClick={() => setDelMaint(m)} className="btn-card-action btn-action-delete" title={t('common.delete')}><Trash2 size={15} /></button>
                         )}
                       </div>
                     </div>
@@ -278,7 +319,7 @@ function ManageCategoriesModal({ open, onClose }: { open: boolean; onClose: () =
           {categories.map((c) => (
             <div key={c.id} className="flex items-center justify-between rounded-xl bg-slate-100/70 border border-slate-200 px-4 py-2.5">
               <span className="text-sm text-ink-primary">{c.name}</span>
-              <button onClick={async () => { await deleteCategory(c.id); toast.success(t('toast.deleted')); }} className="grid h-8 w-8 place-items-center rounded-lg text-ink-secondary hover:text-rose-600 hover:bg-rose-500/10 transition-colors"><Trash2 size={15} /></button>
+              <button onClick={async () => { await deleteCategory(c.id); toast.success(t('toast.deleted')); }} className="btn-card-action btn-action-delete h-8 w-8 rounded-lg" title={t('common.delete')}><Trash2 size={15} /></button>
             </div>
           ))}
         </div>

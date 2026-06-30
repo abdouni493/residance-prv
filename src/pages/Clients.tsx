@@ -84,46 +84,68 @@ export default function Clients() {
       ) : (
         <motion.div variants={staggerContainer} initial="initial" animate="animate" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           <AnimatePresence>
-            {filtered.map((c) => {
+            {filtered.map((c, idx) => {
               const stats = clientStats(c.id, data.reservations);
+              const avatarGrad = ['bg-grad-rose', 'bg-grad-teal', 'bg-grad-purple', 'bg-grad-gold'][idx % 4];
               return (
                 <motion.div key={c.id} variants={listItem} layout exit="exit">
-                  <GradientCard className="p-5 h-full flex flex-col">
+                  <GradientCard
+                    className="p-5 h-full flex flex-col border border-white/10 shadow-xl"
+                    style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                  >
                     <div className="flex items-start gap-3">
-                      <div className="grid h-12 w-12 place-items-center rounded-xl bg-grad-rose text-white font-bold shrink-0">
+                      <div className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-white font-bold shrink-0">
                         {initials(`${c.firstName} ${c.lastName}`)}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <h3 className="font-bold text-ink-primary truncate">{c.firstName} {c.lastName}</h3>
-                        <p className="text-xs text-ink-muted truncate">{c.profession || '—'}</p>
+                        <h3 className="font-bold text-white truncate">{c.firstName} {c.lastName}</h3>
+                        <p className="text-xs text-sky-200/80 truncate">{c.profession || '—'}</p>
+                        {c.documentType && (
+                          <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold bg-white/10 border border-white/10 text-sky-200 rounded-full px-2 py-0.5">
+                            <IdCard size={10} /> {c.documentType}{c.documentNumber ? ` · ${c.documentNumber}` : ''}
+                          </span>
+                        )}
                       </div>
                       {stats.totalDebt > 0 && (
-                        <span className="text-xs font-semibold text-rose-600 bg-rose-500/10 border border-rose-400/30 rounded-full px-2 py-0.5 shrink-0">
+                        <span className="text-xs font-semibold text-rose-300 bg-rose-500/20 border border-rose-500/30 rounded-full px-2 py-0.5 shrink-0">
                           {formatDA(stats.totalDebt)}
                         </span>
                       )}
                     </div>
 
-                    <div className="mt-4 space-y-1.5 text-sm text-ink-secondary flex-1">
-                      <p className="flex items-center gap-2"><Phone size={14} className="text-ink-muted" /> {c.phone}</p>
-                      {c.email && <p className="flex items-center gap-2 truncate"><Mail size={14} className="text-ink-muted shrink-0" /> <span className="truncate">{c.email}</span></p>}
-                      <p className="flex items-center gap-2"><IdCard size={14} className="text-ink-muted" /> {c.documentNumber || '—'}</p>
-                      <p className="flex items-center gap-2"><MapPin size={14} className="text-ink-muted" /> {c.city || '—'}</p>
+                    <div className="mt-4 space-y-1.5 text-sm text-slate-200 flex-1">
+                      <p className="flex items-center gap-2"><Phone size={14} className="text-sky-300" /> {c.phone}</p>
+                      {c.email && <p className="flex items-center gap-2 truncate"><Mail size={14} className="text-sky-300 shrink-0" /> <span className="truncate">{c.email}</span></p>}
+                      <p className="flex items-center gap-2"><MapPin size={14} className="text-sky-300" /> {c.city || '—'}</p>
+                      {stats.reservations > 0 && (
+                        <p className="flex items-center gap-2"><BedDouble size={14} className="text-sky-300" /> {stats.reservations} {t('clients.reservationsCount')}</p>
+                      )}
                     </div>
 
-                    <div className="mt-4 flex items-center gap-1.5 border-t border-slate-200 pt-3">
-                      <GradientButton size="sm" variant="glass" icon={<History size={15} />} onClick={() => setHistoryClient(c)}>
-                        {t('common.history')}
-                      </GradientButton>
+                    <div className="mt-4 flex items-center gap-1.5 border-t border-white/10 pt-3">
+                      <button
+                        onClick={() => setHistoryClient(c)}
+                        className="btn-card-action btn-action-view w-auto px-3.5 flex items-center justify-center gap-1.5 text-xs font-semibold"
+                      >
+                        <History size={15} /> {t('common.history')}
+                      </button>
                       <div className="flex-1" />
                       {can(perms, 'clients', 'edit') && (
-                        <button onClick={() => { setEditing(c); setFormOpen(true); }} className="grid h-9 w-9 place-items-center rounded-lg text-ink-secondary hover:text-brand-600 hover:bg-slate-100 transition-colors">
-                          <Pencil size={16} />
+                        <button
+                          onClick={() => { setEditing(c); setFormOpen(true); }}
+                          className="btn-card-action btn-action-edit"
+                          title={t('common.edit')}
+                        >
+                          <Pencil size={15} />
                         </button>
                       )}
                       {can(perms, 'clients', 'delete') && (
-                        <button onClick={() => setToDelete(c)} className="grid h-9 w-9 place-items-center rounded-lg text-ink-secondary hover:text-rose-600 hover:bg-rose-500/10 transition-colors">
-                          <Trash2 size={16} />
+                        <button
+                          onClick={() => setToDelete(c)}
+                          className="btn-card-action btn-action-delete"
+                          title={t('common.delete')}
+                        >
+                          <Trash2 size={15} />
                         </button>
                       )}
                     </div>

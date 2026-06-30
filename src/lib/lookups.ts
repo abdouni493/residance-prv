@@ -38,5 +38,5 @@ export function expenseCategoryName(data: AppData, id: string): string {
 }
 
 export function reservationRoomLabels(data: AppData, r: Reservation): string {
-  return r.rooms.map((rr) => `Ch. ${roomName(data, rr.roomId)}`).join(' · ');
+  return r.rooms.map((rr) => `Appart. ${roomName(data, rr.roomId)}`).join(' · ');
 }

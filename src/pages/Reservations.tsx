@@ -2,7 +2,8 @@ import { useMemo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   CalendarCheck, Plus, CalendarRange, Eye, Pencil, Printer, CreditCard, User, Phone,
-  BedDouble, CalendarDays, Wallet, Trash2, CheckSquare, Square,
+  Building2, CalendarDays, Wallet, Trash2, CheckCircle2, PlayCircle,
+  Mail, MapPin, Clock, ShieldCheck, DollarSign
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -19,13 +20,21 @@ import { CalendarTimeline } from '@/components/reservations/CalendarTimeline';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { reservationPaid, reservationRemaining } from '@/store/selectors';
 import { staggerContainer, listItem } from '@/animations';
-import { formatDA, formatDate, rangesOverlap, todayISO, addDaysISO, monthKey } from '@/lib/utils';
+import { formatDA, formatDate, rangesOverlap, todayISO, addDaysISO, monthKey, nightsBetween } from '@/lib/utils';
 import { clientName, reservationRoomLabels, clientById } from '@/lib/lookups';
 import { buildInvoiceHTML, printHTML } from '@/lib/print';
 import type { Reservation } from '@/types';
 
 type Period = 'today' | 'week' | 'month' | 'all';
-type StatusFilter = 'all' | 'paid' | 'debt';
+type StatusFilter = 'all' | 'pending' | 'active' | 'paid' | 'debt' | 'cancelled';
+
+const statusBg: Record<string, string> = {
+  pending: 'bg-gradient-to-br from-violet-50 to-purple-50 border-violet-200',
+  active: 'bg-gradient-to-br from-sky-50 to-blue-50 border-sky-200',
+  paid: 'bg-gradient-to-br from-emerald-50 to-green-50 border-emerald-200',
+  debt: 'bg-gradient-to-br from-orange-50 to-amber-50 border-orange-200',
+  cancelled: 'bg-gradient-to-br from-slate-50 to-gray-50 border-slate-200',
+};
 
 export default function Reservations() {
   const { t, lang } = useI18n();
@@ -34,6 +43,7 @@ export default function Reservations() {
   const storeInfo = useApp((s) => s.storeInfo);
   const perms = useCurrentPermissions();
   const deleteReservation = useApp((s) => s.deleteReservation);
+  const updateReservation = useApp((s) => s.updateReservation);
 
   const [search, setSearch] = useState('');
   const [period, setPeriod] = useState<Period>('all');
@@ -44,14 +54,13 @@ export default function Reservations() {
   const [detail, setDetail] = useState<Reservation | null>(null);
   const [payFor, setPayFor] = useState<Reservation | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
-
-  // Selection & delete state
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteOne, setDeleteOne] = useState<Reservation | null>(null);
-  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [clotureFor, setClotureFor] = useState<Reservation | null>(null);
+  const [activateFor, setActivateFor] = useState<Reservation | null>(null);
+
+  const today = todayISO();
 
   const periodRange = useMemo((): [string, string] | null => {
-    const today = todayISO();
     if (period === 'today') return [today, addDaysISO(today, 1)];
     if (period === 'week') {
       const d = new Date(today);
@@ -64,13 +73,12 @@ export default function Reservations() {
       return [`${mk}-01`, `${mk}-31`];
     }
     return null;
-  }, [period]);
+  }, [period, today]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return data.reservations.filter((r) => {
-      if (status === 'paid' && !(r.status === 'paid' || r.status === 'active')) return false;
-      if (status === 'debt' && r.status !== 'debt') return false;
+      if (status !== 'all' && r.status !== status) return false;
       if (periodRange && !rangesOverlap(r.checkIn, r.checkOut, periodRange[0], periodRange[1])) return false;
       if (q) {
         const c = clientById(data, r.clientId);
@@ -81,24 +89,7 @@ export default function Reservations() {
     });
   }, [data, search, status, periodRange]);
 
-  // Clear selection whenever the filtered list changes
-  useEffect(() => { setSelectedIds(new Set()); }, [search, period, status]);
-
-  const allSelected = filtered.length > 0 && filtered.every((r) => selectedIds.has(r.id));
-  const someSelected = selectedIds.size > 0;
   const canDelete = can(perms, 'reservations', 'delete');
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleAll = () => {
-    setSelectedIds(allSelected ? new Set() : new Set(filtered.map((r) => r.id)));
-  };
 
   const handleDeleteOne = async () => {
     if (!deleteOne) return;
@@ -106,16 +97,16 @@ export default function Reservations() {
     toast.success(t('toast.deleted'));
   };
 
-  const handleDeleteBulk = async () => {
-    const count = selectedIds.size;
-    await Promise.all([...selectedIds].map((id) => deleteReservation(id)));
-    setSelectedIds(new Set());
-    toast.success(`${count} réservation(s) supprimée(s)`);
-  };
-
   const openCreate = () => { setEditing(null); setWizardOpen(true); };
   const openEdit = (r: Reservation) => { setEditing(r); setWizardOpen(true); };
   const print = (r: Reservation) => printHTML(`${r.code}`, buildInvoiceHTML(data, r, storeInfo));
+
+  const handleActivate = async () => {
+    if (!activateFor) return;
+    await updateReservation(activateFor.id, { status: 'active' });
+    toast.success(t('toast.updated'));
+    setActivateFor(null);
+  };
 
   return (
     <div>
@@ -138,7 +129,7 @@ export default function Reservations() {
       />
 
       {/* Filters */}
-      <div className="flex flex-col lg:flex-row gap-3 mb-4">
+      <div className="flex flex-col lg:flex-row gap-3 mb-6">
         <SearchInput value={search} onChange={setSearch} placeholder={t('res.searchPlaceholder')} className="flex-1" />
         <SegmentedControl<Period>
           value={period}
@@ -156,52 +147,15 @@ export default function Reservations() {
           onChange={setStatus}
           size="sm"
           options={[
-            { value: 'all', label: t('common.all') },
-            { value: 'paid', label: t('res.statusPaid') },
-            { value: 'debt', label: t('res.statusDebt') },
+            { value: 'all', label: t('res.filterAll') },
+            { value: 'pending', label: t('res.filterPending') },
+            { value: 'active', label: t('res.filterActive') },
+            { value: 'paid', label: t('res.filterPaid') },
+            { value: 'debt', label: t('res.filterDebt') },
+            { value: 'cancelled', label: t('res.filterCancelled') },
           ]}
         />
       </div>
-
-      {/* Bulk-select toolbar */}
-      {filtered.length > 0 && canDelete && (
-        <div className="flex items-center gap-3 mb-5 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200">
-          <button
-            onClick={toggleAll}
-            className="flex items-center gap-2 text-sm font-medium text-ink-secondary hover:text-ink-primary transition-colors select-none"
-          >
-            {allSelected
-              ? <CheckSquare size={17} className="text-brand-600" />
-              : <Square size={17} />}
-            {allSelected ? 'Tout désélectionner' : 'Tout sélectionner'}
-            <span className="text-ink-muted font-normal">({filtered.length})</span>
-          </button>
-
-          <AnimatePresence>
-            {someSelected && (
-              <motion.div
-                key="bulk-actions"
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -8 }}
-                transition={{ duration: 0.15 }}
-                className="flex items-center gap-3"
-              >
-                <span className="h-4 w-px bg-slate-300" />
-                <span className="text-sm text-brand-600 font-semibold">{selectedIds.size} sélectionnée(s)</span>
-                <GradientButton
-                  variant="danger"
-                  size="sm"
-                  icon={<Trash2 size={14} />}
-                  onClick={() => setConfirmBulk(true)}
-                >
-                  Supprimer la sélection
-                </GradientButton>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      )}
 
       {filtered.length === 0 ? (
         <EmptyState
@@ -215,80 +169,108 @@ export default function Reservations() {
           <AnimatePresence>
             {filtered.map((r) => {
               const remaining = reservationRemaining(r);
-              const isSelected = selectedIds.has(r.id);
               return (
-                <motion.div key={r.id} variants={listItem} layout exit="exit">
+                <motion.div key={r.id} variants={listItem} layout exit={{ opacity: 0, scale: 0.95 }}>
                   <GradientCard
-                    className={`p-5 h-full flex flex-col transition-all duration-150 ${
-                      isSelected ? 'ring-2 ring-brand-500 ring-offset-1' : ''
-                    }`}
+                    className="p-5 h-full flex flex-col border border-white/10 shadow-xl"
+                    style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
                   >
                     {/* Header row */}
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        {canDelete && (
-                          <button
-                            onClick={() => toggleSelect(r.id)}
-                            className="shrink-0 text-ink-muted hover:text-brand-600 transition-colors"
-                            title={isSelected ? 'Désélectionner' : 'Sélectionner'}
-                          >
-                            {isSelected
-                              ? <CheckSquare size={16} className="text-brand-600" />
-                              : <Square size={16} />}
-                          </button>
-                        )}
-                        <span className="text-sm font-bold text-gradient truncate">{r.code}</span>
-                      </div>
-                      <ResStatusBadge status={r.status} />
+                      <span className="text-sm font-bold text-sky-200 truncate">{r.code}</span>
+                      <ResStatusBadge status={r.status} dark />
                     </div>
 
                     {/* Info */}
                     <div className="mt-3 space-y-1.5">
-                      <p className="flex items-center gap-2 text-sm font-semibold text-ink-primary">
-                        <User size={15} className="text-ink-muted" /> {clientName(data, r.clientId)}
+                      <p className="flex items-center gap-2 text-sm font-semibold text-white">
+                        <User size={15} className="text-sky-300" /> {clientName(data, r.clientId)}
                       </p>
-                      <p className="flex items-center gap-2 text-xs text-ink-secondary">
-                        <Phone size={13} className="text-ink-muted" /> {clientById(data, r.clientId)?.phone}
+                      <p className="flex items-center gap-2 text-xs text-slate-300">
+                        <Phone size={13} className="text-sky-300" /> {clientById(data, r.clientId)?.phone}
                       </p>
-                      <p className="flex items-center gap-2 text-xs text-ink-secondary">
-                        <BedDouble size={13} className="text-ink-muted" /> {reservationRoomLabels(data, r)}
+                      <p className="flex items-center gap-2 text-xs text-slate-300">
+                        <Building2 size={13} className="text-sky-300" /> {reservationRoomLabels(data, r)}
                       </p>
-                      <p className="flex items-center gap-2 text-xs text-ink-secondary">
-                        <CalendarDays size={13} className="text-ink-muted" /> {formatDate(r.checkIn, lang)} → {formatDate(r.checkOut, lang)} · {r.nights} {t('common.nights')}
+                      <p className="flex items-center gap-2 text-xs text-slate-300">
+                        <CalendarDays size={13} className="text-sky-300" /> {formatDate(r.checkIn, lang)} → {formatDate(r.checkOut, lang)} · {r.nights} {t('common.nights')}
                       </p>
                     </div>
 
                     {/* Totals */}
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-center rounded-xl bg-slate-100/70 border border-slate-200 p-2.5">
-                      <div><p className="text-[10px] text-ink-muted">{t('common.total')}</p><p className="text-xs font-bold text-ink-primary">{formatDA(r.total)}</p></div>
-                      <div><p className="text-[10px] text-ink-muted">{t('common.paid')}</p><p className="text-xs font-bold text-emerald-600">{formatDA(reservationPaid(r))}</p></div>
-                      <div><p className="text-[10px] text-ink-muted">{t('common.remaining')}</p><p className={`text-xs font-bold ${remaining > 0 ? 'text-amber-600' : 'text-ink-secondary'}`}>{formatDA(remaining)}</p></div>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-center rounded-xl bg-white/10 border border-white/10 backdrop-blur-md p-2.5">
+                      <div>
+                        <p className="text-[10px] text-slate-300">{t('common.total')}</p>
+                        <p className="text-xs font-bold text-white">{formatDA(r.total)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-300">{t('common.paid')}</p>
+                        <p className="text-xs font-bold text-emerald-350 text-emerald-300">{formatDA(reservationPaid(r))}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-300">{t('common.remaining')}</p>
+                        <p className={`text-xs font-bold ${remaining > 0 ? 'text-amber-300' : 'text-slate-300'}`}>{formatDA(remaining)}</p>
+                      </div>
                     </div>
-
-                    {/* Actions */}
-                    <div className="mt-3 flex items-center gap-1.5 border-t border-slate-200 pt-3">
-                      <button onClick={() => setDetail(r)} className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg glass text-xs font-medium text-ink-primary hover:bg-slate-200/70 transition-colors">
-                        <Eye size={14} /> {t('common.view')}
+                    <div className="mt-3 flex items-center gap-1.5 border-t border-white/10 pt-3 flex-wrap">
+                      <button
+                        onClick={() => setDetail(r)}
+                        className="btn-card-action btn-action-view flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold"
+                        title={t('common.view')}
+                      >
+                        <Eye size={15} /> {t('common.view')}
                       </button>
                       {can(perms, 'reservations', 'edit') && (
-                        <button onClick={() => openEdit(r)} className="grid h-9 w-9 place-items-center rounded-lg text-ink-secondary hover:text-brand-600 hover:bg-slate-100 transition-colors" title={t('common.edit')}>
+                        <button
+                          onClick={() => openEdit(r)}
+                          className="btn-card-action btn-action-edit"
+                          title={t('common.edit')}
+                        >
                           <Pencil size={15} />
                         </button>
                       )}
                       {can(perms, 'reservations', 'print') && (
-                        <button onClick={() => print(r)} className="grid h-9 w-9 place-items-center rounded-lg text-ink-secondary hover:text-sky-600 hover:bg-slate-100 transition-colors" title={t('common.print')}>
+                        <button
+                          onClick={() => print(r)}
+                          className="btn-card-action btn-action-print"
+                          title={t('common.print')}
+                        >
                           <Printer size={15} />
                         </button>
                       )}
                       {can(perms, 'reservations', 'pay') && remaining > 0 && (
-                        <button onClick={() => setPayFor(r)} className="grid h-9 w-9 place-items-center rounded-lg bg-grad-success text-white" title={t('common.pay')}>
+                        <button
+                          onClick={() => setPayFor(r)}
+                          className="btn-card-action btn-action-pay"
+                          title={t('common.pay')}
+                        >
                           <CreditCard size={15} />
+                        </button>
+                      )}
+                      {/* "Terminer" for active reservations */}
+                      {r.status === 'active' && can(perms, 'reservations', 'edit') && (
+                        <button
+                          onClick={() => setClotureFor(r)}
+                          className="btn-card-action btn-action-pay"
+                          title={t('res.cloture')}
+                        >
+                          <CheckCircle2 size={15} />
+                        </button>
+                      )}
+                      {/* "Activer" for pending reservations */}
+                      {r.status === 'pending' && can(perms, 'reservations', 'edit') && (
+                        <button
+                          onClick={() => setActivateFor(r)}
+                          className="btn-card-action btn-action-edit"
+                          title={t('res.activate')}
+                        >
+                          <PlayCircle size={15} />
                         </button>
                       )}
                       {canDelete && (
                         <button
                           onClick={() => setDeleteOne(r)}
-                          className="grid h-9 w-9 place-items-center rounded-lg text-ink-secondary hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          className="btn-card-action btn-action-delete"
                           title={t('common.delete')}
                         >
                           <Trash2 size={15} />
@@ -307,6 +289,7 @@ export default function Reservations() {
       <CalendarTimeline open={calendarOpen} onClose={() => setCalendarOpen(false)} onSelect={(r) => { setCalendarOpen(false); setDetail(r); }} />
       <DetailModal reservation={detail} onClose={() => setDetail(null)} onPrint={print} onPay={(r) => { setDetail(null); setPayFor(r); }} data={data} lang={lang} />
       <PaymentModal reservation={payFor} onClose={() => setPayFor(null)} />
+      <ClotureModal reservation={clotureFor} onClose={() => setClotureFor(null)} />
 
       {/* Single delete confirm */}
       <ConfirmDialog
@@ -317,15 +300,204 @@ export default function Reservations() {
         message={`Supprimer ${deleteOne?.code} ? Cette action est irréversible.`}
       />
 
-      {/* Bulk delete confirm */}
+      {/* Activate confirm */}
       <ConfirmDialog
-        open={confirmBulk}
-        onClose={() => setConfirmBulk(false)}
-        onConfirm={handleDeleteBulk}
-        title="Supprimer la sélection"
-        message={`Supprimer ${selectedIds.size} réservation(s) sélectionnée(s) ? Cette action est irréversible.`}
+        open={!!activateFor}
+        onClose={() => setActivateFor(null)}
+        onConfirm={handleActivate}
+        title={t('res.activate')}
+        message={`Activer la réservation ${activateFor?.code} et passer son statut à "En cours" ?`}
       />
     </div>
+  );
+}
+
+function ClotureModal({ reservation, onClose }: { reservation: Reservation | null; onClose: () => void }) {
+  const { t, lang } = useI18n();
+  const toast = useToast();
+  const data = useAppData();
+  const addPayment = useApp((s) => s.addPayment);
+  const updateReservation = useApp((s) => s.updateReservation);
+  const [finalPayment, setFinalPayment] = useState('');
+  const [lateCharge, setLateCharge] = useState('');
+
+  const r = reservation;
+  const today = todayISO();
+  const remaining = r ? reservationRemaining(r) : 0;
+  const paid = r ? reservationPaid(r) : 0;
+
+  // Late checkout calculation
+  const lateNights = r ? nightsBetween(r.checkOut, today) : 0;
+  const pricePerNightAll = r
+    ? r.rooms.reduce((sum, rr) => {
+        const room = data.rooms.find((x) => x.id === rr.roomId);
+        return sum + (room?.pricePerNight ?? rr.pricePerNight);
+      }, 0)
+    : 0;
+  const defaultLateCharge = lateNights * pricePerNightAll;
+
+  useEffect(() => {
+    if (reservation) {
+      setFinalPayment('');
+      setLateCharge(defaultLateCharge > 0 ? String(defaultLateCharge) : '');
+    }
+  }, [reservation?.id]);
+
+  const payNum = finalPayment === '' ? 0 : Number(finalPayment);
+  const lateNum = lateCharge === '' ? 0 : Number(lateCharge);
+  const newTotal = (r?.total ?? 0) + lateNum;
+  const totalDue = Math.max(0, newTotal - paid);
+
+  const handleConfirm = async () => {
+    if (!r) return;
+    const updatedTotal = r.total + lateNum;
+    if (payNum > 0) {
+      const note = lateNights > 0
+        ? `Clôture · ${lateNights} nuit${lateNights > 1 ? 's' : ''} retard`
+        : 'Paiement clôture';
+      await addPayment(r.id, payNum, note);
+    }
+    const totalPaid = paid + payNum;
+    const newStatus = totalPaid >= updatedTotal ? 'paid' : 'debt';
+    await updateReservation(r.id, { status: newStatus, total: updatedTotal });
+    toast.success(t('toast.updated'));
+    setFinalPayment('');
+    setLateCharge('');
+    onClose();
+  };
+
+  const close = () => { setFinalPayment(''); setLateCharge(''); onClose(); };
+
+  return (
+    <Modal
+      open={!!reservation}
+      onClose={close}
+      title={t('res.clotureTitle')}
+      subtitle={r?.code}
+      size="lg"
+      footer={
+        <div className="flex gap-3 justify-end">
+          <GradientButton variant="glass" onClick={close}>{t('common.cancel')}</GradientButton>
+          <GradientButton variant="success" icon={<CheckCircle2 size={16} />} onClick={handleConfirm}>
+            {t('res.confirmCloture')}
+          </GradientButton>
+        </div>
+      }
+    >
+      {r && (
+        <div className="space-y-4">
+          {/* Reservation summary */}
+          <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2">
+            <p className="text-xs font-bold text-ink-muted uppercase mb-2">Résumé de la réservation</p>
+            <div className="flex justify-between text-sm">
+              <span className="text-ink-secondary">Client</span>
+              <span className="font-semibold">{clientName(data, r.clientId)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-ink-secondary">Appartement(s)</span>
+              <span className="font-semibold">{reservationRoomLabels(data, r)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-ink-secondary">Dates</span>
+              <span className="font-semibold">{formatDate(r.checkIn, lang)} → {formatDate(r.checkOut, lang)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-ink-secondary">Arrivée / Départ</span>
+              <span className="font-semibold">{r.checkInTime} → {r.checkOutTime}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-ink-secondary">Nuits réservées</span>
+              <span className="font-semibold">{r.nights}</span>
+            </div>
+          </div>
+
+          {/* Late checkout alert */}
+          {lateNights > 0 && (
+            <div className="rounded-xl bg-rose-50 border border-rose-200 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Clock size={15} className="text-rose-500 shrink-0" />
+                <p className="text-sm font-bold text-rose-700">
+                  Retard de {lateNights} nuit{lateNights > 1 ? 's' : ''}
+                </p>
+              </div>
+              <p className="text-xs text-rose-600">
+                Départ prévu : {formatDate(r.checkOut, lang)} — Aujourd'hui : {formatDate(today, lang)}
+              </p>
+              <div className="flex items-center gap-3 pt-1 border-t border-rose-200">
+                <span className="text-xs text-rose-600 flex-1">
+                  Supplément retard ({lateNights}n × {formatDA(pricePerNightAll)}/n)
+                </span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={lateCharge}
+                    onChange={(e) => setLateCharge(e.target.value)}
+                    className="w-28 rounded-lg border-2 border-rose-300 bg-white px-3 py-1.5 text-sm font-bold text-right outline-none focus:border-rose-500"
+                    placeholder="0"
+                  />
+                  <span className="text-xs text-rose-500 font-semibold">DA</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Payment history */}
+          <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
+            <p className="text-xs font-bold text-ink-muted uppercase mb-2">{t('res.paymentHistory')}</p>
+            {r.payments.length === 0 ? (
+              <p className="text-sm text-ink-muted">Aucun paiement enregistré</p>
+            ) : (
+              <>
+                {r.payments.map((p) => (
+                  <div key={p.id} className="flex justify-between text-sm py-0.5">
+                    <span className="text-ink-secondary">{formatDate(p.date, lang)}{p.note && ` · ${p.note}`}</span>
+                    <span className="text-emerald-600 font-medium">{formatDA(p.amount)}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+
+          {/* Financial summary */}
+          <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2">
+            <p className="text-xs font-bold text-ink-muted uppercase mb-2">Détail financier</p>
+            <div className="flex justify-between text-sm">
+              <span className="text-ink-secondary">Total réservation</span>
+              <span className="font-semibold">{formatDA(r.total)}</span>
+            </div>
+            {lateNum > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-rose-600">Supplément retard</span>
+                <span className="font-semibold text-rose-600">+ {formatDA(lateNum)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm font-bold border-t border-slate-200 pt-2">
+              <span>Total dû</span>
+              <span>{formatDA(newTotal)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-ink-secondary">Déjà payé</span>
+              <span className="text-emerald-600 font-semibold">{formatDA(paid)}</span>
+            </div>
+            <div className={`flex justify-between text-sm font-bold ${totalDue > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+              <span>Reste à payer</span>
+              <span>{formatDA(totalDue)}</span>
+            </div>
+          </div>
+
+          {/* Final payment */}
+          {totalDue > 0 && (
+            <TextField
+              label={`Paiement final (reste : ${formatDA(totalDue)})`}
+              type="number"
+              value={finalPayment}
+              onChange={(e) => setFinalPayment(e.target.value)}
+              placeholder={String(totalDue)}
+            />
+          )}
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -342,68 +514,275 @@ function DetailModal({
   const { t } = useI18n();
   const r = reservation;
   if (!r) return <Modal open={false} onClose={onClose}>{null}</Modal>;
+
   const client = clientById(data, r.clientId);
   const remaining = reservationRemaining(r);
+  const paid = reservationPaid(r);
+  const total = r.total;
+  const pctPaid = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
+
+  // Initials for avatar
+  const clientInitials = client
+    ? `${client.firstName.slice(0, 1)}${client.lastName.slice(0, 1)}`.toUpperCase()
+    : 'U';
 
   return (
     <Modal
       open={!!reservation}
       onClose={onClose}
-      title={r.code}
+      title={
+        <div className="flex items-center gap-3">
+          <span className="text-xl font-bold bg-gradient-to-r from-saas-primary-start via-saas-primary-via to-saas-primary-end bg-clip-text text-transparent">{r.code}</span>
+          <ResStatusBadge status={r.status} />
+        </div>
+      }
       subtitle={client ? `${client.firstName} ${client.lastName}` : ''}
-      size="lg"
+      size="xl"
       footer={
-        <div className="flex gap-2 justify-end">
-          <GradientButton variant="glass" icon={<Printer size={16} />} onClick={() => onPrint(r)}>{t('common.print')}</GradientButton>
-          {remaining > 0 && <GradientButton variant="success" icon={<CreditCard size={16} />} onClick={() => onPay(r)}>{t('common.pay')}</GradientButton>}
+        <div className="flex gap-3 justify-end items-center">
+          <button
+            onClick={() => onPrint(r)}
+            className="flex items-center gap-2 h-11 px-5 rounded-xl border border-slate-200 bg-white text-ink-secondary text-sm font-semibold hover:border-slate-300 hover:bg-slate-50 transition-all active:scale-95 cursor-pointer"
+          >
+            <Printer size={16} /> {t('common.print')}
+          </button>
+          {remaining > 0 && (
+            <button
+              onClick={() => onPay(r)}
+              className="btn-saas-primary h-11 px-6 text-sm active:scale-95 flex items-center gap-2"
+            >
+              <CreditCard size={16} /> {t('common.pay')}
+            </button>
+          )}
         </div>
       }
     >
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <ResStatusBadge status={r.status} />
-          <span className="text-xs text-ink-muted">{formatDate(r.checkIn, lang)} → {formatDate(r.checkOut, lang)}</span>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Stat label={t('common.total')} value={formatDA(r.total)} />
-          <Stat label={t('common.paid')} value={formatDA(reservationPaid(r))} tone="success" />
-          <Stat label={t('common.remaining')} value={formatDA(remaining)} tone={remaining > 0 ? 'danger' : 'default'} />
-          <Stat label={t('common.nights')} value={`${r.nights}`} />
-        </div>
-
-        <div className="rounded-xl bg-slate-100/70 border border-slate-200 p-4">
-          <p className="text-[11px] font-bold text-ink-muted uppercase mb-2">{t('res.step3')}</p>
-          {r.rooms.map((rr) => (
-            <div key={rr.roomId} className="flex justify-between text-sm py-0.5">
-              <span className="text-ink-secondary">Chambre {data.rooms.find((x) => x.id === rr.roomId)?.name}</span>
-              <span className="text-ink-primary">{formatDA(rr.pricePerNight)} × {r.nights}</span>
-            </div>
-          ))}
-          {r.services.length > 0 && (
-            <>
-              <p className="text-[11px] font-bold text-ink-muted uppercase mt-3 mb-2">{t('res.step4')}</p>
-              {r.services.map((sv) => (
-                <div key={sv.serviceId} className="flex justify-between text-sm py-0.5">
-                  <span className="text-ink-secondary">{data.services.find((x) => x.id === sv.serviceId)?.name}</span>
-                  <span className="text-ink-primary">{formatDA(sv.unitPrice)} × {sv.quantity}</span>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 text-slate-800">
+        {/* Left Column: Client & Stay Details */}
+        <div className="lg:col-span-8 space-y-6">
+          
+          {/* Card 1: Client Card */}
+          {client ? (
+            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
+              <div className="flex items-center gap-4 pb-4 border-b border-slate-100">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-saas-primary-start to-saas-primary-via text-white font-bold text-lg shadow-sm">
+                  {clientInitials}
                 </div>
-              ))}
-            </>
+                <div>
+                  <h3 className="text-base font-bold text-ink-primary">{client.firstName} {client.lastName}</h3>
+                  <p className="text-xs text-ink-muted">{client.profession || 'Client Résident'}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div className="flex items-start gap-2.5">
+                  <Phone size={16} className="text-slate-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wide">{t('common.phone')}</p>
+                    <p className="text-ink-primary font-semibold mt-0.5">{client.phone}</p>
+                    {client.phone2 && <p className="text-ink-secondary text-xs mt-0.5">{client.phone2}</p>}
+                  </div>
+                </div>
+
+                {client.email && (
+                  <div className="flex items-start gap-2.5">
+                    <Mail size={16} className="text-slate-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wide">{t('common.email')}</p>
+                      <p className="text-ink-primary font-semibold mt-0.5 truncate max-w-[200px]">{client.email}</p>
+                    </div>
+                  </div>
+                )}
+
+                {(client.address || client.city) && (
+                  <div className="flex items-start gap-2.5">
+                    <MapPin size={16} className="text-slate-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wide">{t('common.address')}</p>
+                      <p className="text-ink-primary font-semibold mt-0.5">
+                        {[client.address, client.city].filter(Boolean).join(', ')}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {client.documentNumber && (
+                  <div className="flex items-start gap-2.5">
+                    <ShieldCheck size={16} className="text-slate-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wide">{client.documentType || t('clients.idDocument')}</p>
+                      <p className="text-ink-primary font-semibold mt-0.5">{client.documentNumber}</p>
+                      {client.documentExpiryDate && (
+                        <p className="text-rose-500 text-xs mt-0.5 font-medium">
+                          Exp: {formatDate(client.documentExpiryDate, lang)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm text-center py-8">
+              <User size={32} className="text-slate-350 mx-auto mb-2" />
+              <p className="text-ink-secondary text-sm font-semibold">{t('common.noData')}</p>
+            </div>
           )}
+
+          {/* Card 2: Stay & Rooms details */}
+          <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
+            <h4 className="text-xs font-bold text-ink-muted uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-3">
+              <CalendarDays size={14} className="text-saas-primary-via" /> Détails du séjour
+            </h4>
+
+            {/* Check-In / Check-Out timeline */}
+            <div className="grid grid-cols-2 gap-4 bg-slate-50 border border-slate-100 rounded-xl p-4 text-center">
+              <div className="border-e border-slate-200/80">
+                <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wide">{t('res.checkIn')}</p>
+                <p className="text-base font-bold text-ink-primary mt-1">{formatDate(r.checkIn, lang)}</p>
+                <div className="flex items-center justify-center gap-1 text-xs text-ink-secondary mt-1">
+                  <Clock size={12} className="text-slate-400" /> {r.checkInTime || '14:00'}
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wide">{t('res.checkOut')}</p>
+                <p className="text-base font-bold text-ink-primary mt-1">{formatDate(r.checkOut, lang)}</p>
+                <div className="flex items-center justify-center gap-1 text-xs text-ink-secondary mt-1">
+                  <Clock size={12} className="text-slate-400" /> {r.checkOutTime || '11:00'}
+                </div>
+              </div>
+            </div>
+
+            {/* Rooms List */}
+            <div className="space-y-3 pt-1">
+              <p className="text-[11px] font-bold text-ink-muted uppercase tracking-wide">{t('res.step3')}</p>
+              {r.rooms.map((rr) => {
+                const room = data.rooms.find((x) => x.id === rr.roomId);
+                const category = room ? data.categories.find((c) => c.id === room.categoryId) : null;
+                const floor = room ? data.floors.find((f) => f.id === room.floorId) : null;
+                return (
+                  <div key={rr.roomId} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:border-slate-200 bg-white transition-all shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <Building2 size={16} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-ink-primary">{room?.name || 'Appartement'}</p>
+                        <p className="text-xs text-ink-muted">
+                          {category?.name || 'Appartement'} · {floor?.name || 'Étage'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-ink-primary">{formatDA(rr.pricePerNight)} <span className="text-[10px] font-normal text-ink-muted">/ {t('common.night')}</span></p>
+                      <p className="text-xs text-ink-muted">{r.nights} {r.nights > 1 ? t('common.nights') : t('common.night')}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Services List */}
+            {r.services.length > 0 && (
+              <div className="space-y-3 pt-2">
+                <p className="text-[11px] font-bold text-ink-muted uppercase tracking-wide">{t('res.step4')}</p>
+                {r.services.map((sv) => {
+                  const service = data.services.find((x) => x.id === sv.serviceId);
+                  return (
+                    <div key={sv.serviceId} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:border-slate-200 bg-white transition-all shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+                          <Wallet size={16} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-ink-primary">{service?.name || 'Service'}</p>
+                          <p className="text-xs text-ink-muted flex items-center gap-1.5 mt-0.5">
+                            <span>{formatDA(sv.unitPrice)}</span>
+                            <span className="text-slate-400">×</span>
+                            <span>{sv.quantity}</span>
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-ink-primary">{formatDA(sv.unitPrice * sv.quantity)}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
-        {r.payments.length > 0 && (
-          <div className="rounded-xl bg-slate-100/70 border border-slate-200 p-4">
-            <p className="text-[11px] font-bold text-ink-muted uppercase mb-2">{t('res.paymentHistory')}</p>
-            {r.payments.map((p) => (
-              <div key={p.id} className="flex justify-between text-sm py-0.5">
-                <span className="text-ink-secondary">{formatDate(p.date, lang)} · {p.note}</span>
-                <span className="text-emerald-600 font-medium">{formatDA(p.amount)}</span>
+        {/* Right Column: Financial Card & Payments */}
+        <div className="lg:col-span-4 space-y-6">
+
+          {/* Card 3: Financial Summary Card */}
+          <div className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-920 to-slate-950 p-5 shadow-lg text-white space-y-5">
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-800 pb-3">
+              <DollarSign size={14} className="text-brand-400" /> Informations Financières
+            </h4>
+
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-400">{t('common.total')}</span>
+                <span className="text-lg font-black text-white">{formatDA(total)}</span>
               </div>
-            ))}
+
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-400">{t('common.paid')}</span>
+                <span className="text-base font-bold text-emerald-450">{formatDA(paid)}</span>
+              </div>
+
+              <div className="border-t border-slate-800 pt-3 flex justify-between items-center">
+                <span className="text-xs text-slate-400">{t('common.remaining')}</span>
+                <span className={`text-base font-extrabold ${remaining > 0 ? 'text-rose-450' : 'text-emerald-450'}`}>
+                  {formatDA(remaining)}
+                </span>
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex justify-between text-[10px] text-slate-400 font-semibold">
+                <span>Paiement</span>
+                <span>{pctPaid}%</span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
+                  style={{ width: `${pctPaid}%` }}
+                />
+              </div>
+            </div>
           </div>
-        )}
+
+          {/* Card 4: Payment History Card */}
+          <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
+            <h4 className="text-xs font-bold text-ink-muted uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-3">
+              <Wallet size={14} className="text-saas-primary-via" /> {t('res.paymentHistory')}
+            </h4>
+
+            {r.payments.length === 0 ? (
+              <p className="text-xs text-ink-muted text-center py-4">Aucun paiement enregistré</p>
+            ) : (
+              <div className="relative pl-4 border-l-2 border-slate-100 space-y-4 py-1">
+                {r.payments.map((p) => (
+                  <div key={p.id} className="relative space-y-0.5">
+                    {/* Circle dot marker */}
+                    <div className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-white ring-4 ring-emerald-50" />
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-semibold text-emerald-600">{formatDA(p.amount)}</span>
+                      <span className="text-ink-muted text-[10px]">{formatDate(p.date, lang)}</span>
+                    </div>
+                    {p.note && <p className="text-ink-secondary text-[11px] leading-tight">{p.note}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+        </div>
       </div>
     </Modal>
   );

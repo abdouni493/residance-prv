@@ -1,12 +1,13 @@
 import { lazy, Suspense, type ReactNode, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useApp, useCurrentPermissions, canAccess } from '@/store/appStore';
+import { useApp, useCurrentPermissions, canAccess, fetchWorkerPermissions } from '@/store/appStore';
 import { supabase } from '@/lib/supabase';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageSkeleton } from '@/components/ui/Skeleton';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { pageTransition } from '@/animations';
-import type { ModuleKey } from '@/types';
+import type { ModuleKey, Permissions } from '@/types';
 
 const Login = lazy(() => import('@/pages/Login'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
@@ -20,10 +21,28 @@ const Caisse = lazy(() => import('@/pages/Caisse'));
 const Reports = lazy(() => import('@/pages/Reports'));
 const Settings = lazy(() => import('@/pages/Settings'));
 
+// Preload all pages to avoid white-screen delays on first navigation
+const preload = () => {
+  import('@/pages/Dashboard');
+  import('@/pages/Reservations');
+  import('@/pages/Chambres');
+  import('@/pages/Clients');
+  import('@/pages/Workers');
+  import('@/pages/Services');
+  import('@/pages/Expenses');
+  import('@/pages/Caisse');
+  import('@/pages/Reports');
+  import('@/pages/Settings');
+};
+
 function PageShell({ children }: { children: ReactNode }) {
+  const location = useLocation();
   return (
     <motion.div variants={pageTransition} initial="initial" animate="animate" exit="exit">
-      <Suspense fallback={<PageSkeleton />}>{children}</Suspense>
+      {/* key on Suspense forces remount on route change, preventing stale content flashes */}
+      <Suspense key={location.pathname} fallback={<PageSkeleton />}>
+        {children}
+      </Suspense>
     </motion.div>
   );
 }
@@ -87,10 +106,14 @@ export default function App() {
   const user = useApp((s) => s.user);
   const setUser = useApp((s) => s.setUser);
   const loadAll = useApp((s) => s.loadAll);
+  const loadStoreInfo = useApp((s) => s.loadStoreInfo);
   const location = useLocation();
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
+    // Load residence identity up-front so the login screen shows the real
+    // name/logo from the database (not the default placeholder).
+    loadStoreInfo();
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
         try {
@@ -98,15 +121,25 @@ export default function App() {
             .from('profiles').select('*').eq('id', session.user.id).single();
           if (profile) {
             await loadAll();
+            const p = profile as Record<string, unknown>;
+            const role = (p.role as 'admin' | 'worker') ?? 'worker';
+            let workerId = (p.worker_id as string) ?? undefined;
+            let permissions: Permissions | undefined;
+            if (role === 'worker') {
+              const wc = await fetchWorkerPermissions(session.user.id);
+              workerId = wc.workerId ?? workerId;
+              permissions = wc.permissions;
+            }
             setUser({
               id: session.user.id,
-              name: (profile as Record<string, unknown>).name as string ?? '',
-              username: (profile as Record<string, unknown>).username as string ?? '',
+              name: (p.name as string) ?? '',
+              username: (p.username as string) ?? '',
               email: session.user.email ?? '',
               password: '',
-              role: (profile as Record<string, unknown>).role as 'admin' | 'worker' ?? 'worker',
-              avatar: (profile as Record<string, unknown>).avatar_url as string ?? null,
-              workerId: (profile as Record<string, unknown>).worker_id as string ?? undefined,
+              role,
+              avatar: (p.avatar_url as string) ?? null,
+              workerId,
+              permissions,
             });
           }
         } catch {
@@ -114,6 +147,7 @@ export default function App() {
         }
       }
       setAuthLoading(false);
+      preload();
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) setUser(null);
@@ -145,7 +179,9 @@ export default function App() {
           element={
             user ? (
               <AppLayout>
-                <AppRoutes />
+                <ErrorBoundary>
+                  <AppRoutes />
+                </ErrorBoundary>
               </AppLayout>
             ) : (
               <Navigate to="/login" replace />

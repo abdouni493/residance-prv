@@ -154,7 +154,7 @@ export function caisseRecap(data: AppData, from: string, to: string): CaisseReca
     roomMap.set(rname, (roomMap.get(rname) ?? 0) + m.cost);
   }
   const maintenanceByRoom = [...roomMap.entries()].map(([name, total]) => ({
-    name: `Chambre ${name}`,
+    name: `Appartement ${name}`,
     total,
   }));
 

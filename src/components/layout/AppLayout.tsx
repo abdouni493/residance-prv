@@ -1,20 +1,61 @@
 import { useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
+import { PanelLeftOpen } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { useI18n } from '@/i18n';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarPinned, setSidebarPinned] = useState(true);
   const { dir } = useI18n();
+
+  const handleNavigate = () => {
+    setMobileOpen(false);
+    if (!sidebarPinned) setSidebarOpen(false);
+  };
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Desktop sidebar */}
-      <aside className="hidden lg:block w-[260px] shrink-0">
-        <Sidebar />
-      </aside>
+      {/* Desktop sidebar with animation */}
+      <AnimatePresence initial={false}>
+        {sidebarOpen && (
+          <motion.aside
+            key="desktop-sidebar"
+            className="hidden lg:block w-[260px] shrink-0 overflow-hidden"
+            initial={{ x: -260, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -260, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          >
+            <Sidebar
+              onNavigate={handleNavigate}
+              pinned={sidebarPinned}
+              onTogglePin={() => setSidebarPinned((p) => !p)}
+            />
+          </motion.aside>
+        )}
+      </AnimatePresence>
+
+      {/* Floating re-open button (desktop only, shown when sidebar is closed) */}
+      <AnimatePresence>
+        {!sidebarOpen && (
+          <motion.button
+            key="reopen-btn"
+            className="hidden lg:flex fixed left-3 top-1/2 -translate-y-1/2 z-40 items-center justify-center h-10 w-10 rounded-xl bg-white shadow-lg border border-slate-200 text-slate-600 hover:text-brand-600 hover:border-brand-300 transition-colors"
+            initial={{ x: -60, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -60, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+            onClick={() => setSidebarOpen(true)}
+            title="Ouvrir la sidebar"
+          >
+            <PanelLeftOpen size={18} />
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {/* Mobile drawer sidebar */}
       {createPortal(
@@ -38,7 +79,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 exit={{ x: dir === 'rtl' ? '100%' : '-100%' }}
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               >
-                <Sidebar onNavigate={() => setMobileOpen(false)} />
+                <Sidebar
+                  onNavigate={() => setMobileOpen(false)}
+                  pinned={false}
+                  onTogglePin={() => {}}
+                />
               </motion.div>
             </motion.div>
           )}

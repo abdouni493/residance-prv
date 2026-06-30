@@ -101,54 +101,57 @@ export default function Chambres() {
           <AnimatePresence>
             {filtered.map(({ room, status }) => (
               <motion.div key={room.id} variants={listItem} layout exit="exit">
-                <GradientCard className="p-5 h-full flex flex-col">
+                <GradientCard
+                  className="p-5 h-full flex flex-col border border-white/10 shadow-xl"
+                  style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3">
-                      <div className="grid h-12 w-12 place-items-center rounded-xl bg-grad-primary text-white shadow-lg shrink-0">
+                      <div className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-white shadow-lg shrink-0">
                         <BedDouble size={22} />
                       </div>
                       <div>
-                        <h3 className="font-bold text-ink-primary text-lg">{room.name}</h3>
-                        <p className="text-xs text-ink-muted">{categoryName(data, room.categoryId)} · {floorName(data, room.floorId)}</p>
+                        <h3 className="font-bold text-white text-lg">{room.name}</h3>
+                        <p className="text-xs text-sky-200/80">{categoryName(data, room.categoryId)} · {floorName(data, room.floorId)}</p>
                       </div>
                     </div>
                     <RoomStatusBadge status={status} />
                   </div>
 
                   <div className="mt-4 flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-1.5 text-ink-secondary">
-                      <Users size={15} className="text-ink-muted" /> {room.capacity} {t('common.persons')}
+                    <span className="flex items-center gap-1.5 text-slate-200">
+                      <Users size={15} className="text-sky-300" /> {room.capacity} {t('common.persons')}
                     </span>
-                    <span className="text-lg font-extrabold text-gradient">{formatDA(room.pricePerNight)}<span className="text-xs text-ink-muted font-medium"> / {t('common.night')}</span></span>
+                    <span className="text-lg font-extrabold text-white">{formatDA(room.pricePerNight)}<span className="text-xs text-sky-250 text-sky-200/70 font-medium"> / {t('common.night')}</span></span>
                   </div>
 
                   {status === 'maintenance' && room.maintenanceNote && (
-                    <p className="mt-2 text-xs text-amber-600 bg-amber-500/10 border border-amber-400/20 rounded-lg px-2.5 py-1.5">{room.maintenanceNote}</p>
+                    <p className="mt-2 text-xs text-amber-300 bg-amber-500/20 border border-amber-500/30 rounded-lg px-2.5 py-1.5">{room.maintenanceNote}</p>
                   )}
 
-                  <div className="mt-4 flex items-center gap-1.5 border-t border-slate-200 pt-3">
-                    <GradientButton size="sm" variant="glass" icon={<Eye size={15} />} onClick={() => setDetailRoom(room)}>
+                  <div className="mt-4 flex items-center gap-1.5 border-t border-white/10 pt-3">
+                    <GradientButton size="sm" variant="glass" className="bg-white/10 border-white/10 text-white hover:bg-white/20" icon={<Eye size={15} />} onClick={() => setDetailRoom(room)}>
                       {t('common.details')}
                     </GradientButton>
                     <div className="flex-1" />
                     {can(perms, 'chambres', 'edit') && status !== 'maintenance' && (
-                      <button onClick={() => setMaintRoom(room)} title={t('rooms.setMaintenance')} className="grid h-9 w-9 place-items-center rounded-lg text-ink-secondary hover:text-amber-600 hover:bg-amber-500/10 transition-colors">
-                        <Wrench size={16} />
+                      <button onClick={() => setMaintRoom(room)} title={t('rooms.setMaintenance')} className="btn-card-action btn-action-maint">
+                        <Wrench size={15} />
                       </button>
                     )}
                     {can(perms, 'chambres', 'edit') && status === 'maintenance' && (
-                      <button onClick={async () => { await endRoomMaintenance(room.id); toast.success(t('toast.updated')); }} title={t('rooms.endMaintenance')} className="grid h-9 w-9 place-items-center rounded-lg text-emerald-600 hover:bg-emerald-500/10 transition-colors">
-                        <Check size={16} />
+                      <button onClick={async () => { await endRoomMaintenance(room.id); toast.success(t('toast.updated')); }} title={t('rooms.endMaintenance')} className="btn-card-action btn-action-pay">
+                        <Check size={15} />
                       </button>
                     )}
                     {can(perms, 'chambres', 'edit') && (
-                      <button onClick={() => { setFormRoom(room); setFormOpen(true); }} className="grid h-9 w-9 place-items-center rounded-lg text-ink-secondary hover:text-brand-600 hover:bg-slate-100 transition-colors">
-                        <Pencil size={16} />
+                      <button onClick={() => { setFormRoom(room); setFormOpen(true); }} className="btn-card-action btn-action-edit" title={t('common.edit')}>
+                        <Pencil size={15} />
                       </button>
                     )}
                     {can(perms, 'chambres', 'delete') && (
-                      <button onClick={() => setToDelete(room)} className="grid h-9 w-9 place-items-center rounded-lg text-ink-secondary hover:text-rose-600 hover:bg-rose-500/10 transition-colors">
-                        <Trash2 size={16} />
+                      <button onClick={() => setToDelete(room)} className="btn-card-action btn-action-delete" title={t('common.delete')}>
+                        <Trash2 size={15} />
                       </button>
                     )}
                   </div>
@@ -217,9 +220,9 @@ export default function Chambres() {
 
 function RoomStatusBadge({ status }: { status: RoomStatus }) {
   const { t } = useI18n();
-  if (status === 'available') return <Badge tone="success" dot>{t('rooms.available')}</Badge>;
-  if (status === 'occupied') return <Badge tone="danger" dot>{t('rooms.occupied')}</Badge>;
-  return <Badge tone="warning" dot>{t('rooms.maintenance')}</Badge>;
+  if (status === 'available') return <Badge tone="success" dot className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30">{t('rooms.available')}</Badge>;
+  if (status === 'occupied') return <Badge tone="danger" dot className="bg-rose-500/20 text-rose-300 border-rose-500/30">{t('rooms.occupied')}</Badge>;
+  return <Badge tone="warning" dot className="bg-amber-500/20 text-amber-300 border-amber-500/30">{t('rooms.maintenance')}</Badge>;
 }
 
 function RoomFormModal({
@@ -342,7 +345,7 @@ function ManageListModal({
           {items.map((it) => (
             <div key={it.id} className="flex items-center justify-between rounded-xl bg-slate-100/70 border border-slate-200 px-4 py-2.5">
               <span className="text-sm text-ink-primary">{it.name}</span>
-              <button onClick={() => onDelete(it.id)} className="grid h-8 w-8 place-items-center rounded-lg text-ink-secondary hover:text-rose-600 hover:bg-rose-500/10 transition-colors">
+              <button onClick={() => onDelete(it.id)} className="btn-card-action btn-action-delete h-8 w-8 rounded-lg" title={t('common.delete')}>
                 <Trash2 size={15} />
               </button>
             </div>

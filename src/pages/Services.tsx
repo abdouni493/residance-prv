@@ -97,37 +97,40 @@ export default function Services() {
           <AnimatePresence>
             {services.map((svc) => (
               <motion.div key={svc.id} variants={listItem} layout exit="exit">
-                <GradientCard className="p-5 h-full flex flex-col">
+                <GradientCard
+                  className="p-5 h-full flex flex-col border border-white/10 shadow-xl"
+                  style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                >
                   <div className="flex items-start gap-3">
-                    <div className="grid h-11 w-11 place-items-center rounded-xl bg-grad-gold text-white shadow-lg shrink-0">
+                    <div className="grid h-11 w-11 place-items-center rounded-xl bg-white/15 text-white shadow-lg shrink-0">
                       <Sparkles size={20} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h3 className="font-bold text-ink-primary truncate">{svc.name}</h3>
-                      <p className="text-sm text-ink-secondary mt-0.5 line-clamp-2">
+                      <h3 className="font-bold text-white truncate">{svc.name}</h3>
+                      <p className="text-sm text-sky-200/80 mt-0.5 line-clamp-2">
                         {svc.description || '—'}
                       </p>
                     </div>
                   </div>
                   <div className="mt-4 flex items-center justify-between">
-                    <span className="text-lg font-extrabold text-gradient">{formatDA(svc.price)}</span>
+                    <span className="text-lg font-extrabold text-white">{formatDA(svc.price)}</span>
                     <div className="flex items-center gap-1.5">
                       {can(perms, 'services', 'edit') && (
                         <button
                           onClick={() => openEdit(svc)}
-                          className="grid h-9 w-9 place-items-center rounded-lg text-ink-secondary hover:text-brand-600 hover:bg-slate-100 transition-colors"
-                          aria-label={t('common.edit')}
+                          className="btn-card-action btn-action-edit"
+                          title={t('common.edit')}
                         >
-                          <Pencil size={16} />
+                          <Pencil size={15} />
                         </button>
                       )}
                       {can(perms, 'services', 'delete') && (
                         <button
                           onClick={() => setToDelete(svc)}
-                          className="grid h-9 w-9 place-items-center rounded-lg text-ink-secondary hover:text-rose-600 hover:bg-rose-500/10 transition-colors"
-                          aria-label={t('common.delete')}
+                          className="btn-card-action btn-action-delete"
+                          title={t('common.delete')}
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={15} />
                         </button>
                       )}
                     </div>

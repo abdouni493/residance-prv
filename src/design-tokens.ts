@@ -1,7 +1,21 @@
 export const COLORS = {
+  // Sky-blue brand palette
+  brand: {
+    50: '#f0f4ff',
+    100: '#dbeafe',
+    200: '#bfdbfe',
+    300: '#93c5fd',
+    400: '#60a5fa',
+    500: '#1d4ed8',
+    600: '#1e3a8a',
+    700: '#1d40b0',
+    800: '#1e3e96',
+    900: '#172554',
+  },
+
   // Dégradés principaux
-  primary: { from: '#6366F1', to: '#8B5CF6' }, // Indigo → Violet
-  secondary: { from: '#06B6D4', to: '#3B82F6' }, // Cyan → Bleu
+  primary: { from: '#1e3a8a', to: '#0891b2' }, // SaaS Indigo -> Cyan
+  secondary: { from: '#1e3a8a', to: '#4f46e5' }, // SaaS Indigo -> Royal Blue
   success: { from: '#10B981', to: '#059669' }, // Émeraude → Vert
   warning: { from: '#F59E0B', to: '#EF4444' }, // Ambre → Rouge
   gold: { from: '#F59E0B', to: '#D97706' }, // Or luxe
@@ -46,8 +60,8 @@ export const GRADIENT_CLASS: Record<GradientKey, string> = {
 
 // Raw CSS gradients (for inline styles / charts)
 export const GRADIENT_CSS: Record<GradientKey, string> = {
-  primary: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-  secondary: 'linear-gradient(135deg, #06B6D4 0%, #3B82F6 100%)',
+  primary: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 50%, #0891b2 100%)',
+  secondary: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 50%, #4F46E5 100%)',
   success: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
   warning: 'linear-gradient(135deg, #F59E0B 0%, #EF4444 100%)',
   gold: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',

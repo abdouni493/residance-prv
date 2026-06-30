@@ -88,6 +88,9 @@ function ResidenceSettings() {
         <TextField label={t('common.email')} type="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
         <TextField label={t('common.phone')} value={form.phone} onChange={(e) => set('phone', e.target.value)} />
         <TextField wrapClassName="sm:col-span-2" label={t('common.address')} value={form.address} onChange={(e) => set('address', e.target.value)} />
+        <div className="sm:col-span-2 pt-1">
+          <p className="text-[11px] font-bold text-ink-muted uppercase tracking-wide">Informations légales</p>
+        </div>
         <TextField label="NIF" value={form.nif} onChange={(e) => set('nif', e.target.value)} />
         <TextField label="NIS" value={form.nis} onChange={(e) => set('nis', e.target.value)} />
         <TextField label="Article" value={form.article} onChange={(e) => set('article', e.target.value)} />

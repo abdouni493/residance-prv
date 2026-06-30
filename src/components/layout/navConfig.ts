@@ -1,7 +1,7 @@
 import {
   LayoutGrid,
   CalendarHeart,
-  BedDouble,
+  Building2,
   Sparkles,
   UsersRound,
   HardHat,
@@ -25,7 +25,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { module: 'dashboard', path: '/app/dashboard', labelKey: 'nav.dashboard', icon: LayoutGrid, color: 'primary' },
   { module: 'reservations', path: '/app/reservations', labelKey: 'nav.reservations', icon: CalendarHeart, color: 'purple' },
-  { module: 'chambres', path: '/app/chambres', labelKey: 'nav.chambres', icon: BedDouble, color: 'secondary' },
+  { module: 'chambres', path: '/app/chambres', labelKey: 'nav.appartements', icon: Building2, color: 'secondary' },
   { module: 'services', path: '/app/services', labelKey: 'nav.services', icon: Sparkles, color: 'gold' },
   { module: 'clients', path: '/app/clients', labelKey: 'nav.clients', icon: UsersRound, color: 'rose' },
   { module: 'workers', path: '/app/workers', labelKey: 'nav.workers', icon: HardHat, color: 'teal' },

@@ -10,6 +10,7 @@ export interface User {
   role: Role;
   avatar: string | null;
   workerId?: string; // link to a worker record if role === 'worker'
+  permissions?: Permissions; // worker's own permissions, loaded at auth time
 }
 
 // ============ PERMISSIONS ============
@@ -97,7 +98,7 @@ export interface Service {
 }
 
 // ============ RESERVATIONS ============
-export type ReservationStatus = 'paid' | 'debt' | 'active' | 'cancelled';
+export type ReservationStatus = 'paid' | 'debt' | 'active' | 'pending' | 'cancelled';
 
 export interface ReservationRoom {
   roomId: string;
@@ -172,6 +173,7 @@ export interface Worker {
   salaryAmount?: number;
   hasAccount: boolean;
   account?: { email: string; username: string; password: string };
+  authUserId?: string; // links the worker row to its auth.users / profile id
   permissions: Permissions;
   advances: Advance[];
   absences: Absence[];

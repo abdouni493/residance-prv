@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  TrendingUp, TrendingDown, Wallet, AlertCircle, BedDouble, CalendarCheck,
+  TrendingUp, TrendingDown, Wallet, AlertCircle, Building2, CalendarCheck,
   PieChart as PieIcon, Wrench, Users, HardHat, Sparkles, CalendarDays,
-  LayoutDashboard, Bell, Receipt, ArrowDownLeft, ArrowUpRight,
+  LayoutDashboard, Bell, Receipt, ArrowDownLeft, ArrowUpRight, Phone,
+  Flag, Clock, AlarmClock, AlertTriangle, BedDouble,
 } from 'lucide-react';
 import { useAppData } from '@/store/hooks';
 import { useI18n } from '@/i18n';
@@ -16,15 +17,17 @@ import { SectionCard } from '@/components/ui/GradientCard';
 import { Badge } from '@/components/ui/Badge';
 import { PageHeader } from '@/components/ui/Misc';
 import { RevenueAreaChart, CountBarChart, HorizontalBars, DonutChart, ChartLegend } from '@/components/ui/Charts';
-import { staggerContainer } from '@/animations';
-import { formatDA, formatDate, clamp } from '@/lib/utils';
-import { clientName, reservationRoomLabels, expenseCategoryName } from '@/lib/lookups';
+import { staggerContainer, listItem } from '@/animations';
+import { formatDA, formatDate, clamp, addDaysISO } from '@/lib/utils';
+import { clientName, reservationRoomLabels, expenseCategoryName, clientById } from '@/lib/lookups';
 import { ResStatusBadge } from '@/components/ResStatusBadge';
+import type { Reservation } from '@/types';
 
 export default function Dashboard() {
   const { t, lang } = useI18n();
   const data = useAppData();
   const today = new Date().toISOString().slice(0, 10);
+  const [detailRes, setDetailRes] = useState<Reservation | null>(null);
 
   const kpis = useMemo(() => computeKpis(data, today), [data, today]);
   const months = useMemo(() => lastNMonths(6, today), [today]);
@@ -78,6 +81,29 @@ export default function Dashboard() {
 
   const hasAlerts = debtClients.length || expiringToday.length || maintRooms.length;
 
+  // Imminent / overdue reservation alerts
+  const in3days = addDaysISO(today, 3);
+
+  const soonToActivate = useMemo(() => {
+    return data.reservations
+      .filter((r) => r.checkIn >= today && r.checkIn <= in3days && r.status !== 'cancelled')
+      .sort((a, b) => a.checkIn.localeCompare(b.checkIn));
+  }, [data.reservations, today, in3days]);
+
+  const overdueActivation = useMemo(() => {
+    return data.reservations.filter((r) => r.checkIn < today && r.status === 'debt');
+  }, [data.reservations, today]);
+
+  const soonEnding = useMemo(() => {
+    return data.reservations
+      .filter((r) => r.checkOut >= today && r.checkOut <= in3days && r.status === 'active')
+      .sort((a, b) => a.checkOut.localeCompare(b.checkOut));
+  }, [data.reservations, today, in3days]);
+
+  const overdueCheckout = useMemo(() => {
+    return data.reservations.filter((r) => r.checkOut < today && r.status === 'active');
+  }, [data.reservations, today]);
+
   return (
     <div>
       <PageHeader icon={<LayoutDashboard size={24} />} title={t('dash.title')} subtitle={t('dash.subtitle')} />
@@ -101,6 +127,81 @@ export default function Dashboard() {
           gradient="gold"
         />
       </motion.div>
+
+      {/* Reservation alerts — imminent / overdue */}
+      {(soonToActivate.length > 0 || overdueActivation.length > 0 || soonEnding.length > 0 || overdueCheckout.length > 0) && (
+        <div className="space-y-4 mb-6">
+          <ReservationAlertGroup
+            title="Arrivées imminentes"
+            icon={<Bell size={16} />}
+            color="sky"
+            reservations={soonToActivate}
+            dateField="checkIn"
+            data={data}
+            lang={lang}
+            onSelect={setDetailRes}
+          />
+          <ReservationAlertGroup
+            title="Arrivées en retard"
+            icon={<AlertTriangle size={16} />}
+            color="orange"
+            reservations={overdueActivation}
+            dateField="checkIn"
+            data={data}
+            lang={lang}
+            onSelect={setDetailRes}
+          />
+          <ReservationAlertGroup
+            title="Départs imminents"
+            icon={<Clock size={16} />}
+            color="violet"
+            reservations={soonEnding}
+            dateField="checkOut"
+            data={data}
+            lang={lang}
+            onSelect={setDetailRes}
+          />
+          <ReservationAlertGroup
+            title="Départs en retard"
+            icon={<AlarmClock size={16} />}
+            color="rose"
+            reservations={overdueCheckout}
+            dateField="checkOut"
+            data={data}
+            lang={lang}
+            onSelect={setDetailRes}
+          />
+        </div>
+      )}
+
+      {/* Inline detail panel */}
+      <AnimatePresence>
+        {detailRes && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="mb-6 rounded-2xl border border-sky-200 bg-sky-50 p-4"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sky-700">{detailRes.code}</span>
+                <ResStatusBadge status={detailRes.status} />
+              </div>
+              <button onClick={() => setDetailRes(null)} className="text-ink-muted hover:text-ink-primary text-lg leading-none">×</button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+              <div><p className="text-xs text-ink-muted">Client</p><p className="font-medium">{clientName(data, detailRes.clientId)}</p></div>
+              <div><p className="text-xs text-ink-muted">Tél</p><p className="font-medium">{clientById(data, detailRes.clientId)?.phone ?? '—'}</p></div>
+              <div><p className="text-xs text-ink-muted">Arrivée</p><p className="font-medium">{formatDate(detailRes.checkIn, lang)}</p></div>
+              <div><p className="text-xs text-ink-muted">Départ</p><p className="font-medium">{formatDate(detailRes.checkOut, lang)}</p></div>
+              <div><p className="text-xs text-ink-muted">Appartements</p><p className="font-medium">{reservationRoomLabels(data, detailRes)}</p></div>
+              <div><p className="text-xs text-ink-muted">Total</p><p className="font-medium">{formatDA(detailRes.total)}</p></div>
+              <div><p className="text-xs text-ink-muted">Reste dû</p><p className={`font-bold ${reservationRemaining(detailRes) > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{formatDA(reservationRemaining(detailRes))}</p></div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
@@ -241,6 +342,69 @@ function AlertRow({
         <p className="text-xs text-ink-secondary truncate">{sub}</p>
       </div>
       <Badge tone={tone === 'danger' ? 'danger' : tone === 'warning' ? 'warning' : 'info'}>{value}</Badge>
+    </div>
+  );
+}
+
+const alertColors: Record<string, { section: string; card: string; icon: string }> = {
+  sky:    { section: 'border-sky-200 bg-sky-50',    card: 'border-sky-200 bg-white/70 hover:bg-sky-50',    icon: 'text-sky-600' },
+  orange: { section: 'border-orange-200 bg-orange-50', card: 'border-orange-200 bg-white/70 hover:bg-orange-50', icon: 'text-orange-600' },
+  violet: { section: 'border-violet-200 bg-violet-50', card: 'border-violet-200 bg-white/70 hover:bg-violet-50', icon: 'text-violet-600' },
+  rose:   { section: 'border-rose-200 bg-rose-50',  card: 'border-rose-200 bg-white/70 hover:bg-rose-50',  icon: 'text-rose-600' },
+};
+
+function ReservationAlertGroup({
+  title, icon, color, reservations, dateField, data, lang, onSelect,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  color: string;
+  reservations: Reservation[];
+  dateField: 'checkIn' | 'checkOut';
+  data: ReturnType<typeof useAppData>;
+  lang: 'fr' | 'ar';
+  onSelect: (r: Reservation) => void;
+}) {
+  if (reservations.length === 0) return null;
+  const c = alertColors[color] ?? alertColors.sky;
+  return (
+    <div className={`rounded-2xl border ${c.section} p-4`}>
+      <div className={`flex items-center gap-2 mb-3 font-semibold text-sm ${c.icon}`}>
+        {icon} {title} <span className="ml-1 rounded-full bg-white/80 px-2 py-0.5 text-xs">{reservations.length}</span>
+      </div>
+      <motion.div variants={staggerContainer} initial="initial" animate="animate" className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {reservations.map((r) => {
+          const remaining = reservationRemaining(r);
+          const client = clientById(data, r.clientId);
+          return (
+            <motion.button
+              key={r.id}
+              variants={listItem}
+              onClick={() => onSelect(r)}
+              className={`text-left rounded-xl border p-3 transition-colors cursor-pointer ${c.card}`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-bold text-ink-primary">{r.code}</span>
+                <ResStatusBadge status={r.status} />
+              </div>
+              <p className="text-sm font-medium text-ink-primary truncate">{client?.firstName} {client?.lastName}</p>
+              <div className="flex items-center gap-1 text-xs text-ink-secondary mt-0.5">
+                <Phone size={11} /> {client?.phone}
+              </div>
+              <div className="flex items-center gap-1 text-xs text-ink-secondary mt-0.5">
+                <Building2 size={11} /> {reservationRoomLabels(data, r)}
+              </div>
+              <div className="flex items-center gap-1 text-xs text-ink-muted mt-0.5">
+                <CalendarDays size={11} />
+                {formatDate(r.checkIn, lang)} → {formatDate(r.checkOut, lang)}
+              </div>
+              {remaining > 0 && (
+                <p className="text-xs font-semibold text-amber-600 mt-1">Reste: {formatDA(remaining)}</p>
+              )}
+            </motion.button>
+          );
+        })}
+      </motion.div>
     </div>
   );
 }

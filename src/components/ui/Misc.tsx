@@ -29,8 +29,8 @@ export function PageHeader({
           </div>
         )}
         <div>
-          <h1 className="text-2xl font-extrabold text-ink-primary tracking-tight">{title}</h1>
-          {subtitle && <p className="text-sm text-ink-secondary mt-0.5">{subtitle}</p>}
+          <h1 className="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-600 to-blue-700">{title}</h1>
+          {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
         </div>
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2.5">{actions}</div>}
@@ -97,13 +97,22 @@ export function Stat({
   label,
   value,
   tone = 'default',
+  dark = false,
 }: {
   label: ReactNode;
   value: ReactNode;
   tone?: 'default' | 'success' | 'danger' | 'warning';
+  dark?: boolean;
 }) {
-  const toneClass =
-    tone === 'success'
+  const toneClass = dark
+    ? tone === 'success'
+      ? 'text-emerald-300'
+      : tone === 'danger'
+        ? 'text-rose-300'
+        : tone === 'warning'
+          ? 'text-amber-300'
+          : 'text-white'
+    : tone === 'success'
       ? 'text-emerald-600'
       : tone === 'danger'
         ? 'text-rose-600'
@@ -111,8 +120,8 @@ export function Stat({
           ? 'text-amber-600'
           : 'text-ink-primary';
   return (
-    <div className="rounded-xl bg-slate-100/70 border border-slate-200 px-4 py-3">
-      <p className="text-xs text-ink-muted">{label}</p>
+    <div className={cn('rounded-xl px-4 py-3', dark ? 'bg-white/10 border border-white/10' : 'bg-slate-100/70 border border-slate-200')}>
+      <p className={cn('text-xs', dark ? 'text-slate-300' : 'text-ink-muted')}>{label}</p>
       <p className={cn('text-lg font-bold mt-0.5', toneClass)}>{value}</p>
     </div>
   );

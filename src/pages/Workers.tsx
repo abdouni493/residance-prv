@@ -69,39 +69,78 @@ export default function Workers() {
           <AnimatePresence>
             {filtered.map((w) => (
               <motion.div key={w.id} variants={listItem} layout exit="exit">
-                <GradientCard className="p-5 h-full flex flex-col">
+                <GradientCard
+                  className="p-5 h-full flex flex-col border border-white/10 shadow-xl"
+                  style={{ background: 'linear-gradient(145deg, #0c1a2e 0%, #0c4a6e 45%, #0284c7 100%)' }}
+                >
                   <div className="flex items-start gap-3">
-                    <div className="grid h-12 w-12 place-items-center rounded-xl bg-grad-teal text-white font-bold shrink-0">
+                    <div className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-white font-bold shrink-0">
                       {initials(w.name)}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h3 className="font-bold text-ink-primary truncate">{w.name}</h3>
-                      <Badge tone="info" className="mt-1">{w.role}</Badge>
+                      <h3 className="font-bold text-white truncate">{w.name}</h3>
+                      <Badge className="mt-1 bg-sky-500/20 text-sky-200 border-sky-500/30">{w.role}</Badge>
                     </div>
-                    <Badge tone={w.active ? 'success' : 'neutral'} dot>{w.active ? t('workers.active') : t('workers.inactive')}</Badge>
+                    <Badge
+                      tone={w.active ? 'success' : 'neutral'}
+                      dot
+                      className={w.active ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-white/10 text-slate-350 border-white/10'}
+                    >
+                      {w.active ? t('workers.active') : t('workers.inactive')}
+                    </Badge>
                   </div>
 
-                  <div className="mt-4 space-y-1.5 text-sm text-ink-secondary flex-1">
-                    <p className="flex items-center gap-2"><Phone size={14} className="text-ink-muted" /> {w.phone}</p>
-                    <p className="flex items-center gap-2"><CalendarDays size={14} className="text-ink-muted" /> {formatDate(w.startDate, lang)}</p>
+                  <div className="mt-4 space-y-1.5 text-sm text-slate-200 flex-1">
+                    <p className="flex items-center gap-2"><Phone size={14} className="text-sky-300" /> {w.phone}</p>
+                    <p className="flex items-center gap-2"><CalendarDays size={14} className="text-sky-300" /> {formatDate(w.startDate, lang)}</p>
                     {w.hasSalary && (
-                      <p className="flex items-center gap-2"><Wallet size={14} className="text-ink-muted" /> {w.salaryType === 'monthly' ? t('workers.monthly') : t('workers.daily')} · {formatDA(w.salaryAmount ?? 0)}</p>
+                      <p className="flex items-center gap-2"><Wallet size={14} className="text-sky-300" /> {w.salaryType === 'monthly' ? t('workers.monthly') : t('workers.daily')} · {formatDA(w.salaryAmount ?? 0)}</p>
                     )}
                   </div>
 
-                  <div className="mt-4 flex items-center gap-1.5 border-t border-slate-200 pt-3 flex-wrap">
-                    <button onClick={() => setProfileWorker(w)} className="grid h-9 w-9 place-items-center rounded-lg glass text-ink-primary hover:bg-slate-200/70 transition-colors" title={t('common.view')}><Eye size={15} /></button>
+                  <div className="mt-4 flex items-center gap-1.5 border-t border-white/10 pt-3 flex-wrap">
+                    <button
+                      onClick={() => setProfileWorker(w)}
+                      className="btn-card-action btn-action-view"
+                      title={t('common.view')}
+                    >
+                      <Eye size={15} />
+                    </button>
                     {can(perms, 'workers', 'edit') && (
-                      <button onClick={() => { setWizardWorker(w); setWizardOpen(true); }} className="grid h-9 w-9 place-items-center rounded-lg text-ink-secondary hover:text-brand-600 hover:bg-slate-100 transition-colors" title={t('common.edit')}><Pencil size={15} /></button>
+                      <button
+                        onClick={() => { setWizardWorker(w); setWizardOpen(true); }}
+                        className="btn-card-action btn-action-edit"
+                        title={t('common.edit')}
+                      >
+                        <Pencil size={15} />
+                      </button>
                     )}
                     {can(perms, 'workers', 'edit') && w.hasAccount && (
-                      <button onClick={() => setPermWorker(w)} className="grid h-9 w-9 place-items-center rounded-lg text-ink-secondary hover:text-violet-600 hover:bg-slate-100 transition-colors" title={t('workers.permissions')}><KeyRound size={15} /></button>
+                      <button
+                        onClick={() => setPermWorker(w)}
+                        className="btn-card-action btn-action-perm"
+                        title={t('workers.permissions')}
+                      >
+                        <KeyRound size={15} />
+                      </button>
                     )}
                     {can(perms, 'workers', 'pay') && (
-                      <button onClick={() => setProfileWorker(w)} className="ms-auto grid h-9 w-9 place-items-center rounded-lg bg-grad-success text-white" title={t('workers.payment')}><Wallet size={15} /></button>
+                      <button
+                        onClick={() => setProfileWorker(w)}
+                        className="ms-auto btn-card-action btn-action-pay"
+                        title={t('workers.payment')}
+                      >
+                        <Wallet size={15} />
+                      </button>
                     )}
                     {can(perms, 'workers', 'delete') && (
-                      <button onClick={() => setToDelete(w)} className="grid h-9 w-9 place-items-center rounded-lg text-ink-secondary hover:text-rose-600 hover:bg-rose-500/10 transition-colors" title={t('common.delete')}><Trash2 size={15} /></button>
+                      <button
+                        onClick={() => setToDelete(w)}
+                        className="btn-card-action btn-action-delete"
+                        title={t('common.delete')}
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     )}
                   </div>
                 </GradientCard>
@@ -296,7 +335,15 @@ function PermissionsModal({ worker, onClose }: { worker: Worker; onClose: () => 
   const allOn = MODULE_ORDER.every((m) => moduleEnabled(m));
   const toggleAll = () => setPerms(allOn ? {} : fullPermissions());
 
-  const save = async () => { await setWorkerPermissions(worker.id, perms); toast.success(t('toast.saved')); onClose(); };
+  const save = async () => {
+    try {
+      await setWorkerPermissions(worker.id, perms);
+      toast.success(t('toast.saved'));
+      onClose();
+    } catch {
+      toast.error(t('toast.error'));
+    }
+  };
 
   return (
     <Modal

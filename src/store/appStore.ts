@@ -165,6 +165,7 @@ function dbToWorker(row: Record<string, unknown>): Worker {
             password: '',
           }
         : undefined,
+    authUserId: (row.auth_user_id as string) || undefined,
     permissions: (row.permissions as Permissions) || {},
     advances,
     absences,
@@ -262,6 +263,7 @@ interface AppState extends AppData, AuthState {
   // Internal helpers
   setUser: (user: User | null) => void;
   loadAll: () => Promise<void>;
+  loadStoreInfo: () => Promise<void>;
 
   // Auth
   login: (identifier: string, password: string) => Promise<boolean>;
@@ -346,6 +348,7 @@ export const useApp = create<AppState>()((set, get) => ({
 
   // ── Load all data from Supabase ──────────────────────────────────────────
   loadAll: async () => {
+    if (get().loading) return; // prevent concurrent calls
     set({ loading: true });
     try {
       const [
@@ -418,6 +421,14 @@ export const useApp = create<AppState>()((set, get) => ({
     }
   },
 
+  // Loads only the residence identity (name/logo/etc.) — used on the login
+  // screen before authentication. Requires the `settings` table to be readable
+  // by the anon role (see the public-read policy in the SQL).
+  loadStoreInfo: async () => {
+    const { data } = await supabase.from('settings').select('*').limit(1).maybeSingle();
+    if (data) set({ storeInfo: dbToStoreInfo(data as Record<string, unknown>) });
+  },
+
   // ── AUTH ─────────────────────────────────────────────────────────────────
 
   login: async (identifier, password) => {
@@ -447,6 +458,15 @@ export const useApp = create<AppState>()((set, get) => ({
     // Load all data before setting user (ensures data is ready when UI renders)
     await get().loadAll();
 
+    const role = (profile?.role as User['role']) ?? 'worker';
+    let workerId = (profile?.worker_id as string) ?? undefined;
+    let permissions: Permissions | undefined;
+    if (role === 'worker') {
+      const wc = await fetchWorkerPermissions(data.user.id);
+      workerId = wc.workerId ?? workerId;
+      permissions = wc.permissions;
+    }
+
     set({
       user: {
         id: data.user.id,
@@ -454,9 +474,10 @@ export const useApp = create<AppState>()((set, get) => ({
         username: (profile?.username as string) ?? '',
         email: data.user.email ?? '',
         password: '',
-        role: (profile?.role as User['role']) ?? 'worker',
+        role,
         avatar: (profile?.avatar_url as string) ?? null,
-        workerId: (profile?.worker_id as string) ?? undefined,
+        workerId,
+        permissions,
       },
     });
 
@@ -503,7 +524,9 @@ export const useApp = create<AppState>()((set, get) => ({
 
   logout: async () => {
     await supabase.auth.signOut();
-    set({ user: null, ...createInitialData(), storeInfo: STORE_INFO });
+    // Keep storeInfo (the residence's public identity) so the login screen
+    // still shows the real name/logo after logout without needing a refresh.
+    set({ user: null, ...createInitialData() });
   },
 
   updateAccount: async (patch) => {
@@ -959,15 +982,48 @@ export const useApp = create<AppState>()((set, get) => ({
     if (error || !data) return;
     const newId = (data as Record<string, unknown>).id as string;
 
-    if (w.hasAccount && w.account) {
-      const { error: rpcError } = await supabase.rpc('create_worker_account', {
-        p_worker_id: newId,
-        p_email: w.account.email,
-        p_username: w.account.username,
-        p_password: w.account.password,
-        p_name: w.name,
+    // Create Supabase Auth account for the worker via signUp.
+    // Ideal solution is a server-side Edge Function, but signUp works for
+    // internal deployments where email confirmation is disabled in Supabase Auth settings.
+    if (w.hasAccount && w.account && w.account.email && w.account.password) {
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: w.account.email,
+        password: w.account.password,
+        options: {
+          data: {
+            name: w.name,
+            role: 'worker',
+            username: w.account.username,
+            worker_id: newId, // so a handle_new_user trigger can link it directly
+          },
+        },
       });
-      if (rpcError) console.error('create_worker_account error:', rpcError);
+
+      if (signUpError) {
+        console.error('Error creating worker auth account:', signUpError);
+      } else if (signUpData.user) {
+        // A `handle_new_user` trigger may already have created this profile row,
+        // so UPSERT (not INSERT) to avoid a 409 conflict and make sure worker_id
+        // is written onto the existing row.
+        const { error: profileError } = await supabase.from('profiles').upsert(
+          {
+            id: signUpData.user.id,
+            role: 'worker',
+            name: w.name,
+            username: w.account.username,
+            email: w.account.email,
+            worker_id: newId,
+          },
+          { onConflict: 'id' },
+        );
+        if (profileError) console.error('Worker profile upsert failed:', profileError);
+        // auth_user_id is the reliable link the app matches permissions on.
+        const { error: linkError } = await supabase
+          .from('workers')
+          .update({ auth_user_id: signUpData.user.id })
+          .eq('id', newId);
+        if (linkError) console.error('Worker auth_user_id link failed:', linkError);
+      }
     }
 
     const worker: Worker = {
@@ -1120,7 +1176,13 @@ export const useApp = create<AppState>()((set, get) => ({
   },
 
   setWorkerPermissions: async (workerId, perms) => {
-    await supabase.from('workers').update({ permissions: perms }).eq('id', workerId);
+    const { error } = await supabase.from('workers').update({ permissions: perms }).eq('id', workerId);
+    if (error) {
+      // Surface a blocked write (e.g. missing RLS UPDATE policy) instead of
+      // silently updating only local state — otherwise the admin thinks it saved.
+      console.error('setWorkerPermissions failed:', error);
+      throw error;
+    }
     set((s) => ({
       workers: s.workers.map((w) => (w.id === workerId ? { ...w, permissions: perms } : w)),
     }));
@@ -1306,14 +1368,42 @@ export const useApp = create<AppState>()((set, get) => ({
   resetData: () => set({ ...createInitialData(), storeInfo: STORE_INFO }),
 }));
 
-// ─── Permission helpers (unchanged) ────────────────────────────────────────
+// ─── Permission helpers ─────────────────────────────────────────────────────
+
+/**
+ * Fetch the logged-in worker's OWN row (by auth user id) to read its
+ * permissions. This is independent of loadAll()'s `workers` list, which a
+ * worker session usually can't read in full (the workers table holds salaries
+ * and is typically RLS-restricted to admins). A dedicated "read own row" RLS
+ * policy lets this single-row query succeed for the worker themselves.
+ */
+export async function fetchWorkerPermissions(
+  authUserId: string,
+): Promise<{ workerId?: string; permissions: Permissions }> {
+  const { data } = await supabase
+    .from('workers')
+    .select('id, permissions')
+    .eq('auth_user_id', authUserId)
+    .maybeSingle();
+  if (!data) return { permissions: {} };
+  const row = data as Record<string, unknown>;
+  return { workerId: row.id as string, permissions: (row.permissions as Permissions) ?? {} };
+}
 
 export function useCurrentPermissions(): Permissions | null {
   const user = useApp((s) => s.user);
   const workers = useApp((s) => s.workers);
   if (!user || user.role === 'admin') return null;
-  const worker = workers.find((w) => w.id === user.workerId);
-  return worker?.permissions ?? {};
+  // Match the worker row by EITHER the profile link (workerId) OR — more
+  // reliably — its auth_user_id, which always equals the logged-in user's id.
+  // profiles.worker_id is often NULL (a handle_new_user trigger creates the
+  // profile before our insert), so auth_user_id is the dependable link.
+  const worker = workers.find(
+    (w) => (!!user.workerId && w.id === user.workerId) || (!!w.authUserId && w.authUserId === user.id),
+  );
+  if (worker) return worker.permissions ?? {};
+  // Last resort: the permissions snapshot fetched directly at auth time.
+  return user.permissions ?? {};
 }
 
 export function canAccess(perms: Permissions | null, module: ModuleKey): boolean {
