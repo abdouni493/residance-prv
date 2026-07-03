@@ -340,6 +340,7 @@ CREATE TABLE IF NOT EXISTS public.reservations (
   total          NUMERIC(10,2) NOT NULL DEFAULT 0,
   status         TEXT NOT NULL DEFAULT 'debt'
                    CHECK (status IN ('paid','debt','active','cancelled')),
+  notes          TEXT,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   CalendarCheck, Plus, CalendarRange, Eye, Pencil, Printer, CreditCard, User, Phone,
   Building2, CalendarDays, Wallet, Trash2, CheckCircle2, PlayCircle,
-  Mail, MapPin, Clock, ShieldCheck, DollarSign
+  Mail, MapPin, Clock, ShieldCheck, DollarSign, FileText
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -774,6 +774,16 @@ function DetailModal({
               </div>
             )}
           </div>
+
+          {/* Notes / remarque */}
+          {r.notes && (
+            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm space-y-2">
+              <h4 className="text-xs font-bold text-ink-muted uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-3">
+                <FileText size={14} className="text-saas-primary-via" /> {t('res.notes')}
+              </h4>
+              <p className="text-sm text-ink-primary whitespace-pre-wrap">{r.notes}</p>
+            </div>
+          )}
         </div>
 
         {/* Right Column: Financial Card & Payments */}

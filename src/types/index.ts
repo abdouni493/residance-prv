@@ -133,6 +133,7 @@ export interface Reservation {
   payments: Payment[];
   status: ReservationStatus;
   createdAt: string;
+  notes?: string; // client-provided description/remarque
 }
 
 // ============ WORKERS ============

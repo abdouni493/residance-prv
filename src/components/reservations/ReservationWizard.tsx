@@ -267,6 +267,7 @@ export function ReservationWizard({
   const [editTotal,   setEditTotal]   = useState(false);
   const [editedTotal, setEditedTotal] = useState('');
   const [amountPaid,  setAmountPaid]  = useState('');
+  const [notes,       setNotes]       = useState(editing?.notes ?? '');
 
   // Sync calendarRoomId and roomIds if empty but rooms are loaded
   useEffect(() => {
@@ -378,6 +379,7 @@ export function ReservationWizard({
       await updateReservation(editing.id, {
         clientId, rooms: resRooms, services: resServices, checkIn, checkOut,
         checkInTime, checkOutTime, nights, total: finalTotal, payments,
+        notes: notes.trim() || undefined,
       });
       toast.success(t('toast.updated'));
     } else {
@@ -386,6 +388,7 @@ export function ReservationWizard({
         checkInTime, checkOutTime, nights, total: finalTotal,
         payments: paidNum > 0 ? [{ id: `pay-${Date.now()}`, amount: paidNum, date: today, note: 'Paiement initial' }] : [],
         status,
+        notes: notes.trim() || undefined,
       });
       toast.success(t('res.createdOk'));
     }
@@ -890,6 +893,17 @@ export function ReservationWizard({
                             </div>
                           </div>
                         </div>
+
+                        {/* Notes / remarque */}
+                        <SummaryCard icon={<FileText size={16} />} title={t('res.notes')} color="teal">
+                          <textarea
+                            value={notes}
+                            onChange={e => setNotes(e.target.value)}
+                            placeholder={t('res.notesPlaceholder')}
+                            rows={3}
+                            className="w-full rounded-xl border-2 border-slate-200 px-3.5 py-2.5 text-sm text-ink-primary outline-none focus:border-brand-400 transition-all resize-y"
+                          />
+                        </SummaryCard>
                       </div>
                     )}
 

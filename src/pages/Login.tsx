@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
-  Building2, Mail, Lock, User, LogIn, ArrowLeft, UserPlus,
+  Building2, Mail, Lock, LogIn,
   MapPin, Phone, Star, ShieldCheck,
 } from 'lucide-react';
 import { useApp } from '@/store/appStore';
@@ -49,7 +49,6 @@ export default function Login() {
   const navigate = useNavigate();
   const toast = useToast();
   const login = useApp((s) => s.login);
-  const signup = useApp((s) => s.signup);
   const storeInfo = useApp((s) => s.storeInfo);
   const loadStoreInfo = useApp((s) => s.loadStoreInfo);
 
@@ -59,17 +58,8 @@ export default function Login() {
     loadStoreInfo();
   }, [loadStoreInfo]);
 
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
-
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [username, setUsername] = useState('');
-  const [pw, setPw] = useState('');
-  const [pw2, setPw2] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,19 +69,6 @@ export default function Login() {
       navigate('/app/dashboard');
     } else {
       toast.error(t('login.error'));
-    }
-  };
-
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!firstName || !lastName || !email || !username || !pw) return toast.error(t('login.required'));
-    if (pw !== pw2) return toast.error(t('login.mismatch'));
-    const res = await signup({ firstName, lastName, email, username, password: pw });
-    if (res.ok) {
-      toast.success(t('login.welcome'));
-      navigate('/app/dashboard');
-    } else {
-      toast.error(res.error ?? t('toast.error'));
     }
   };
 
@@ -263,107 +240,41 @@ export default function Login() {
               <motion.div variants={staggerContainer} initial="initial" animate="animate">
                 {/* Header */}
                 <motion.div variants={fadeInUp} className="mb-7">
-                  <h2 className="text-2xl font-extrabold text-ink-primary">
-                    {mode === 'login' ? t('login.signIn') : t('login.signUpTitle')}
-                  </h2>
-                  <p className="text-sm text-ink-muted mt-1">
-                    {mode === 'login' ? t('login.subtitle') : t('login.createAccountHint')}
-                  </p>
-
-                  {/* Mode indicator pill */}
-                  <div className="mt-4 inline-flex rounded-xl bg-slate-100 p-1 gap-1">
-                    {(['login', 'signup'] as const).map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => setMode(m)}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                          mode === m
-                            ? 'bg-white text-brand-600 shadow-sm'
-                            : 'text-ink-muted hover:text-ink-primary'
-                        }`}
-                      >
-                        {m === 'login' ? t('login.signIn') : t('login.createAccount')}
-                      </button>
-                    ))}
-                  </div>
+                  <h2 className="text-2xl font-extrabold text-ink-primary">{t('login.signIn')}</h2>
+                  <p className="text-sm text-ink-muted mt-1">{t('login.subtitle')}</p>
                 </motion.div>
 
-                {/* Forms */}
-                <AnimatePresence mode="wait">
-                  {mode === 'login' ? (
-                    <motion.form
-                      key="login"
-                      onSubmit={handleLogin}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -20 }}
-                      transition={{ duration: 0.22 }}
-                      className="space-y-4"
-                    >
-                      <motion.div variants={fadeInUp}>
-                        <TextField
-                          label={t('login.identifier')}
-                          icon={<Mail size={17} />}
-                          value={identifier}
-                          onChange={(e) => setIdentifier(e.target.value)}
-                          placeholder="email ou nom d'utilisateur"
-                          autoComplete="username"
-                          autoFocus
-                        />
-                      </motion.div>
-                      <motion.div variants={fadeInUp}>
-                        <TextField
-                          label={t('login.password')}
-                          type="password"
-                          icon={<Lock size={17} />}
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          placeholder="••••••••"
-                          autoComplete="current-password"
-                        />
-                      </motion.div>
+                {/* Form */}
+                <motion.form onSubmit={handleLogin} className="space-y-4">
+                  <motion.div variants={fadeInUp}>
+                    <TextField
+                      label={t('login.identifier')}
+                      icon={<Mail size={17} />}
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
+                      placeholder="email ou nom d'utilisateur"
+                      autoComplete="username"
+                      autoFocus
+                    />
+                  </motion.div>
+                  <motion.div variants={fadeInUp}>
+                    <TextField
+                      label={t('login.password')}
+                      type="password"
+                      icon={<Lock size={17} />}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      autoComplete="current-password"
+                    />
+                  </motion.div>
 
-                      <motion.div variants={fadeInUp} className="pt-1">
-                        <GradientButton type="submit" fullWidth size="lg" icon={<LogIn size={18} />} glow>
-                          {t('login.signIn')}
-                        </GradientButton>
-                      </motion.div>
-                    </motion.form>
-                  ) : (
-                    <motion.form
-                      key="signup"
-                      onSubmit={handleSignup}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 20 }}
-                      transition={{ duration: 0.22 }}
-                      className="space-y-3.5"
-                    >
-                      <div className="grid grid-cols-2 gap-3">
-                        <TextField label={t('login.firstName')} value={firstName} onChange={(e) => setFirstName(e.target.value)} autoFocus />
-                        <TextField label={t('login.lastName')} value={lastName} onChange={(e) => setLastName(e.target.value)} />
-                      </div>
-                      <TextField label={t('common.email')} type="email" icon={<Mail size={17} />} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-                      <TextField label={t('login.username')} icon={<User size={17} />} value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
-                      <div className="grid grid-cols-2 gap-3">
-                        <TextField label={t('login.password')} type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" />
-                        <TextField label={t('login.confirmPassword')} type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" />
-                      </div>
-
-                      <div className="pt-1">
-                        <GradientButton type="submit" fullWidth size="lg" icon={<UserPlus size={18} />} glow>
-                          {t('login.createAccount')}
-                        </GradientButton>
-                      </div>
-
-                      <div className="text-center pt-1">
-                        <button type="button" onClick={() => setMode('login')} className="text-sm text-ink-secondary hover:text-ink-primary font-medium inline-flex items-center gap-1.5">
-                          <ArrowLeft size={15} /> {t('login.haveAccount')}
-                        </button>
-                      </div>
-                    </motion.form>
-                  )}
-                </AnimatePresence>
+                  <motion.div variants={fadeInUp} className="pt-1">
+                    <GradientButton type="submit" fullWidth size="lg" icon={<LogIn size={18} />} glow>
+                      {t('login.signIn')}
+                    </GradientButton>
+                  </motion.div>
+                </motion.form>
               </motion.div>
             </div>
 

@@ -114,6 +114,7 @@ function dbToReservation(row: Record<string, unknown>): Reservation {
     payments,
     status: row.status as Reservation['status'],
     createdAt: ((row.created_at as string) || '').slice(0, 10),
+    notes: (row.notes as string) || undefined,
   };
   return r;
 }
@@ -808,6 +809,7 @@ export const useApp = create<AppState>()((set, get) => ({
         nights: r.nights,
         total: r.total,
         status,
+        notes: r.notes || null,
         created_at: today,
       })
       .select()
@@ -875,6 +877,7 @@ export const useApp = create<AppState>()((set, get) => ({
       payments,
       status,
       createdAt: today,
+      notes: r.notes || undefined,
     };
 
     set((s) => ({ reservations: [newRes, ...s.reservations] }));
@@ -891,6 +894,7 @@ export const useApp = create<AppState>()((set, get) => ({
     if (patch.checkOutTime !== undefined) dbPatch.check_out_time = patch.checkOutTime;
     if (patch.nights !== undefined) dbPatch.nights = patch.nights;
     if (patch.total !== undefined) dbPatch.total = patch.total;
+    if (patch.notes !== undefined) dbPatch.notes = patch.notes || null;
 
     // Resolve the status that must be persisted: an explicit transition wins;
     // otherwise reconcile paid/debt from the (possibly updated) payments/total.
