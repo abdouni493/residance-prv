@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: #f1f5f9;
+  color: #0f172a;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+html[dir='rtl'] body {
+  font-family: 'Cairo', 'Tajawal', system-ui, sans-serif;
+}
+
+/* Animated app background: soft light canvas with subtle grid + pastel glows */
+.app-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: #f1f5f9;
+  background-image:
+    radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.1), transparent 42%),
+    radial-gradient(circle at 85% 15%, rgba(139, 92, 246, 0.08), transparent 40%),
+    radial-gradient(circle at 75% 85%, rgba(6, 182, 212, 0.07), transparent 44%),
+    linear-gradient(rgba(15, 23, 42, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.025) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 44px 44px, 44px 44px;
+}
+
+.login-bg {
+  background: linear-gradient(-45deg, #eef2ff, #f8fafc, #ede9fe, #e0f2fe);
+  background-size: 400% 400%;
+  animation: gradient-shift 12s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Glassmorphism utility — light frosted surfaces */
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.glass-strong {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.55);
+  background-clip: content-box;
+}
+
+/* Text gradient helper */
+.text-gradient {
+  background: linear-gradient(135deg, #6366f1 0%, #7c3aed 52%, #9333ea 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Hide number input spinners */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Focus ring */
+.focus-ring:focus-visible {
+  outline: 2px solid #818cf8;
+  outline-offset: 2px;
+}
+
+/* Print styles for reports & invoices */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body,
+  .app-bg {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .print-area {
+    color: #000 !important;
+  }
+}
