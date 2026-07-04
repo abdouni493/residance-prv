@@ -5,7 +5,7 @@ import { Menu, ChevronDown, LogOut, UserCog, ShieldCheck } from 'lucide-react';
 import { useApp } from '@/store/appStore';
 import { useI18n } from '@/i18n';
 import { LanguageToggle } from '@/components/LanguageToggle';
-import { initials, formatDateLong } from '@/lib/utils';
+import { initials, formatDateLong, todayISO } from '@/lib/utils';
 
 export function Header({ onMenu }: { onMenu: () => void }) {
   const { t, lang } = useI18n();
@@ -37,7 +37,7 @@ export function Header({ onMenu }: { onMenu: () => void }) {
         </button>
         <div className="hidden md:block min-w-0">
           <p className="text-xs text-ink-muted capitalize truncate">
-            {formatDateLong(new Date().toISOString().slice(0, 10), lang)}
+            {formatDateLong(todayISO(), lang)}
           </p>
         </div>
       </div>

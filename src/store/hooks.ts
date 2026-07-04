@@ -52,6 +52,3 @@ export function useAppData(): AppData {
   );
 }
 
-export function todayISOStable(): string {
-  return new Date().toISOString().slice(0, 10);
-}

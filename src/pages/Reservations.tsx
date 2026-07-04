@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   CalendarCheck, Plus, CalendarRange, Eye, Pencil, Printer, CreditCard, User, Phone,
   Building2, CalendarDays, Wallet, Trash2, CheckCircle2, PlayCircle,
-  Mail, MapPin, Clock, ShieldCheck, DollarSign, FileText
+  Mail, MapPin, Clock, ShieldCheck, DollarSign, FileText, Hourglass
 } from 'lucide-react';
 import { useApp, useCurrentPermissions, can } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -23,7 +23,8 @@ import {
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { reservationPaid, reservationRemaining } from '@/store/selectors';
 import { staggerContainer, listItem } from '@/animations';
-import { formatDA, formatDate, rangesOverlap, todayISO, addDaysISO, monthKey, nightsBetween } from '@/lib/utils';
+import { formatDA, formatDate, formatDateLong, rangesOverlap, todayISO, addDaysISO, monthKey, nightsBetween } from '@/lib/utils';
+import { useToday } from '@/lib/useToday';
 import { clientName, reservationRoomLabels, clientById } from '@/lib/lookups';
 import { buildInvoiceHTML, printHTML } from '@/lib/print';
 import type { Reservation } from '@/types';
@@ -62,7 +63,9 @@ export default function Reservations() {
   const [clotureFor, setClotureFor] = useState<Reservation | null>(null);
   const [activateFor, setActivateFor] = useState<Reservation | null>(null);
 
-  const today = todayISO();
+  // Live local date — auto-updates at midnight / on window focus so the
+  // activation & closure buttons unlock without reloading the page.
+  const today = useToday();
 
   const periodRange = useMemo((): [string, string] | null => {
     if (period === 'today') return [today, addDaysISO(today, 1)];
@@ -84,21 +87,31 @@ export default function Reservations() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return data.reservations.filter((r) => {
-      if (alertFilter) {
-        const a = alertIndex.map.get(r.id);
-        if (!a) return false;
-        if (alertFilter !== 'all' && a.type !== alertFilter) return false;
-      }
-      if (status !== 'all' && r.status !== status) return false;
-      if (periodRange && !rangesOverlap(r.checkIn, r.checkOut, periodRange[0], periodRange[1])) return false;
-      if (q) {
-        const c = clientById(data, r.clientId);
-        const hay = `${c?.firstName ?? ''} ${c?.lastName ?? ''} ${c?.phone ?? ''} ${r.code}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
+    // Numeric part of the code (RES-056 → 56) breaks ties when two
+    // reservations were created the same day (createdAt is date-only).
+    const codeNum = (code: string) => Number(/(\d+)$/.exec(code ?? '')?.[1] ?? 0);
+    return data.reservations
+      .filter((r) => {
+        if (alertFilter) {
+          const a = alertIndex.map.get(r.id);
+          if (!a) return false;
+          if (alertFilter !== 'all' && a.type !== alertFilter) return false;
+        }
+        if (status !== 'all' && r.status !== status) return false;
+        if (periodRange && !rangesOverlap(r.checkIn, r.checkOut, periodRange[0], periodRange[1])) return false;
+        if (q) {
+          const c = clientById(data, r.clientId);
+          const hay = `${c?.firstName ?? ''} ${c?.lastName ?? ''} ${c?.phone ?? ''} ${r.code}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      })
+      // Latest created first, oldest last.
+      .sort((a, b) => {
+        const byCreated = (b.createdAt ?? '').localeCompare(a.createdAt ?? '');
+        if (byCreated !== 0) return byCreated;
+        return codeNum(b.code) - codeNum(a.code);
+      });
   }, [data, search, status, periodRange, alertFilter, alertIndex]);
 
   // Selecting an alert pill clears the status/period filters so every matching
@@ -123,7 +136,9 @@ export default function Reservations() {
   const handleActivate = async () => {
     if (!activateFor) return;
     // Guard: cannot activate before the check-in date.
-    if (today < activateFor.checkIn) {
+    // Re-read the system clock at click time so a card rendered before
+    // midnight can still be activated once the check-in day has arrived.
+    if (todayISO() < activateFor.checkIn) {
       toast.error(t('res.activateBlocked', { date: formatDate(activateFor.checkIn, lang) }));
       setActivateFor(null);
       return;
@@ -152,6 +167,19 @@ export default function Reservations() {
           </>
         }
       />
+
+      {/* Current system date — reference day for all activation/closure rules */}
+      <div className="mb-5 flex items-center gap-3 rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50 via-white to-blue-50 px-4 py-3 shadow-sm">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-sm">
+          <CalendarDays size={18} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-sky-500">{t('common.today')}</p>
+          <p className="text-sm sm:text-base font-extrabold text-sky-800 capitalize truncate">
+            {formatDateLong(today, lang)}
+          </p>
+        </div>
+      </div>
 
       {/* Filters */}
       <div className="flex flex-col lg:flex-row gap-3 mb-6">
@@ -233,6 +261,25 @@ export default function Reservations() {
                               : () => setClotureFor(r)
                           }
                         />
+                      </div>
+                    )}
+
+                    {/* Pending reservation further out than the alert window:
+                        show a countdown so the user always knows how many days
+                        remain before activation unlocks. */}
+                    {!alert && r.status === 'pending' && r.checkIn > today && (
+                      <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-white/15 bg-white/10 p-2.5 backdrop-blur-sm">
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-sky-500 text-white mt-0.5">
+                          <Hourglass size={14} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold leading-tight text-sky-200">
+                            {t('res.pendingCountdown', { days: nightsBetween(today, r.checkIn) })}
+                          </p>
+                          <p className="mt-0.5 text-[11px] leading-snug text-slate-300">
+                            {t('res.pendingCountdownDesc', { date: formatDate(r.checkIn, lang) })}
+                          </p>
+                        </div>
                       </div>
                     )}
 

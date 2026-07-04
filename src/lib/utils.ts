@@ -19,10 +19,18 @@ export function formatNumber(n: number): string {
   return n.toLocaleString('fr-FR');
 }
 
+/** Parse a "yyyy-mm-dd" string as a LOCAL date (new Date(iso) would parse it as UTC
+ *  and shift the displayed day in some timezones). Falls back to Date parsing. */
+function parseISODate(iso: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return new Date(iso);
+}
+
 /** ISO date (yyyy-mm-dd) -> "15 janv. 2025" style */
 export function formatDate(iso: string, locale: 'fr' | 'ar' = 'fr'): string {
   if (!iso) return '';
-  const d = new Date(iso);
+  const d = parseISODate(iso);
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString(locale === 'ar' ? 'ar-DZ' : 'fr-FR', {
     day: '2-digit',
@@ -33,7 +41,7 @@ export function formatDate(iso: string, locale: 'fr' | 'ar' = 'fr'): string {
 
 export function formatDateLong(iso: string, locale: 'fr' | 'ar' = 'fr'): string {
   if (!iso) return '';
-  const d = new Date(iso);
+  const d = parseISODate(iso);
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString(locale === 'ar' ? 'ar-DZ' : 'fr-FR', {
     weekday: 'long',
@@ -43,13 +51,19 @@ export function formatDateLong(iso: string, locale: 'fr' | 'ar' = 'fr'): string 
   });
 }
 
+/** Today's date in yyyy-mm-dd, using the LOCAL system clock.
+ *  (toISOString() returns the UTC date, which lags the local date and made
+ *  same-day reservations show "arrival in 1 day" with a blocked button.) */
 export function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 export function addDaysISO(iso: string, days: number): string {
-  const d = new Date(iso);
-  d.setDate(d.getDate() + days);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const d = m
+    ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + days))
+    : (() => { const x = new Date(iso); x.setDate(x.getDate() + days); return x; })();
   return d.toISOString().slice(0, 10);
 }
 

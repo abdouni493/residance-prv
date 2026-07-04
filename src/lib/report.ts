@@ -5,7 +5,7 @@ import {
   occupancyByFloor, nightsSoldByRoom, type CaisseRecap,
 } from '@/store/selectors';
 import { nightsBetween } from './utils';
-import { formatDA, formatDate } from './utils';
+import { formatDA, formatDate, todayISO } from './utils';
 import { clientName, roomName, serviceName, expenseCategoryName } from './lookups';
 
 export interface ReportData {
@@ -123,7 +123,7 @@ export function buildReportData(data: AppData, from: string, to: string): Report
     absences += w.absences.filter((a) => inRange(a.date, from, to)).length;
   }
 
-  const occ = occupancyByFloor(data, new Date().toISOString().slice(0, 10));
+  const occ = occupancyByFloor(data, todayISO());
   const avgOccupancy = occ.length ? Math.round(occ.reduce((s, o) => s + o.rate, 0) / occ.length) : 0;
 
   return {

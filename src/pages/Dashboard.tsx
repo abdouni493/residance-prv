@@ -22,6 +22,7 @@ import {
 } from '@/components/reservations/reservationAlerts';
 import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, clamp } from '@/lib/utils';
+import { useToday } from '@/lib/useToday';
 import { clientName, reservationRoomLabels, expenseCategoryName, clientById } from '@/lib/lookups';
 import { ResStatusBadge } from '@/components/ResStatusBadge';
 import type { Reservation } from '@/types';
@@ -29,7 +30,9 @@ import type { Reservation } from '@/types';
 export default function Dashboard() {
   const { t, lang } = useI18n();
   const data = useAppData();
-  const today = new Date().toISOString().slice(0, 10);
+  // Live LOCAL date (toISOString would give the UTC date, which lags the
+  // system date and made same-day alerts show as "in 1 day").
+  const today = useToday();
   const [detailRes, setDetailRes] = useState<Reservation | null>(null);
 
   const kpis = useMemo(() => computeKpis(data, today), [data, today]);

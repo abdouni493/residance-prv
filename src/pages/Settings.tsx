@@ -12,7 +12,7 @@ import { GradientButton } from '@/components/ui/GradientButton';
 import { GradientCard } from '@/components/ui/GradientCard';
 import { TextField, TextArea } from '@/components/ui/Field';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { downloadJSON, initials } from '@/lib/utils';
+import { downloadJSON, initials, todayISO } from '@/lib/utils';
 import { uploadImage } from '@/lib/storage';
 import type { StoreInfo } from '@/types';
 
@@ -193,7 +193,7 @@ function DatabaseSettings() {
 
   const handleExport = () => {
     const json = exportData();
-    downloadJSON(`residence-backup-${new Date().toISOString().slice(0, 10)}.json`, json);
+    downloadJSON(`residence-backup-${todayISO()}.json`, json);
     toast.success(t('common.export'));
   };
 

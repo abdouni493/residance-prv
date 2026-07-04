@@ -366,11 +366,11 @@ export function ReservationWizard({
       });
 
     const today = todayISO();
-    // Status is decided by the START DATE, not by payment:
-    //  • check-in is today (or already started) → 'active' (en cours)
-    //  • check-in is in the future              → 'pending' (en attente)
-    // 'paid' / 'debt' are only set later when the reservation is closed (Terminer).
-    const status: ReservationStatus = checkIn <= today ? 'active' : 'pending';
+    // Every new reservation starts as 'pending' (en attente). The user
+    // activates it explicitly: the "Activer" button / alert unlocks as soon
+    // as the check-in day arrives (same-day reservations can be activated
+    // immediately). 'paid' / 'debt' are only set at closure (Terminer).
+    const status: ReservationStatus = 'pending';
 
     if (editing) {
       const payments = [...editing.payments];

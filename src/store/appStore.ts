@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
+import { todayISO } from '@/lib/utils';
 import type {
   User,
   StoreInfo,
@@ -247,9 +248,10 @@ function paymentsSum(payments: Payment[]): number {
   return payments.reduce((s, p) => s + p.amount, 0);
 }
 
-/** Initial lifecycle status for a brand-new reservation, decided by START date. */
-function initialStatus(checkIn: string, today: string): Reservation['status'] {
-  return checkIn <= today ? 'active' : 'pending';
+/** Every brand-new reservation starts pending; the user activates it
+ *  explicitly once the check-in day arrives. */
+function initialStatus(_checkIn: string, _today: string): Reservation['status'] {
+  return 'pending';
 }
 
 /**
@@ -592,7 +594,7 @@ export const useApp = create<AppState>()((set, get) => ({
   // ── CLIENTS ──────────────────────────────────────────────────────────────
 
   addClient: async (c) => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     const { data, error } = await supabase
       .from('clients')
       .insert({
@@ -792,7 +794,7 @@ export const useApp = create<AppState>()((set, get) => ({
 
   addReservation: async (r) => {
     const code = nextResCode(get().reservations);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
 
     // Lifecycle status comes from the wizard (date-based); fall back defensively.
     const status: Reservation['status'] = r.status ?? initialStatus(r.checkIn, today);
@@ -978,7 +980,7 @@ export const useApp = create<AppState>()((set, get) => ({
       .insert({
         reservation_id: resId,
         amount,
-        date: new Date().toISOString().slice(0, 10),
+        date: todayISO(),
         note: note || null,
       })
       .select()
