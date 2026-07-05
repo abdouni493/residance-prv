@@ -373,14 +373,23 @@ export function ReservationWizard({
     const status: ReservationStatus = 'pending';
 
     if (editing) {
-      const payments = [...editing.payments];
-      const diff = paidNum - alreadyPaid;
-      if (diff > 0) payments.push({ id: `pay-${Date.now()}`, amount: diff, date: today, note: 'Ajustement' });
-      await updateReservation(editing.id, {
+      const patch: Partial<Reservation> = {
         clientId, rooms: resRooms, services: resServices, checkIn, checkOut,
-        checkInTime, checkOutTime, nights, total: finalTotal, payments,
+        checkInTime, checkOutTime, nights, total: finalTotal,
         notes: notes.trim() || undefined,
-      });
+      };
+      // Only touch the payment set when the amount paid actually changed. A
+      // positive delta records an extra payment, a negative one records a
+      // correction — both persist, so the card, the dashboard income and the
+      // debts total all stay in sync.
+      const diff = paidNum - alreadyPaid;
+      if (diff !== 0) {
+        patch.payments = [
+          ...editing.payments,
+          { id: `pay-${Date.now()}`, amount: diff, date: today, note: diff > 0 ? 'Ajustement' : 'Correction' },
+        ];
+      }
+      await updateReservation(editing.id, patch);
       toast.success(t('toast.updated'));
     } else {
       await addReservation({

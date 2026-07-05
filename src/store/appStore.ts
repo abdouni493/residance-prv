@@ -940,19 +940,35 @@ export const useApp = create<AppState>()((set, get) => ({
       }
     }
 
+    // Full sync of the payment set: wipe the old rows and re-insert the list in
+    // the patch, so `patch.payments` is authoritative. The previous insert-only
+    // path could only ever ADD money (an edit that lowered the paid amount was
+    // silently dropped) and could duplicate a row on a repeated edit.
+    let syncedPayments: Payment[] | undefined;
     if (patch.payments !== undefined) {
-      const existing = get().reservations.find((r) => r.id === id);
-      const existingIds = new Set((existing?.payments ?? []).map((p) => p.id));
-      const newPayments = patch.payments.filter(
-        (p) => !existingIds.has(p.id) || p.id.startsWith('pay-'),
-      );
-      for (const p of newPayments) {
-        await supabase.from('payments').insert({
-          reservation_id: id,
-          amount: p.amount,
-          date: p.date,
-          note: p.note || null,
-        });
+      await supabase.from('payments').delete().eq('reservation_id', id);
+      if (patch.payments.length > 0) {
+        const { data: payData } = await supabase
+          .from('payments')
+          .insert(
+            patch.payments.map((p) => ({
+              reservation_id: id,
+              amount: p.amount,
+              date: p.date,
+              note: p.note || null,
+            })),
+          )
+          .select();
+        syncedPayments = payData
+          ? (payData as Record<string, unknown>[]).map((p) => ({
+              id: p.id as string,
+              amount: p.amount as number,
+              date: p.date as string,
+              note: (p.note as string) || undefined,
+            }))
+          : patch.payments;
+      } else {
+        syncedPayments = [];
       }
     }
 
@@ -960,6 +976,9 @@ export const useApp = create<AppState>()((set, get) => ({
       reservations: s.reservations.map((r) => {
         if (r.id !== id) return r;
         const merged = { ...r, ...patch };
+        // Use the rows we just persisted (with their real DB ids) as the source
+        // of truth for the payment list.
+        if (syncedPayments !== undefined) merged.payments = syncedPayments;
         // An explicit status in the patch is a manual transition (Activer /
         // Terminer) and wins. Otherwise only the paid/debt split is reconciled.
         merged.status =
