@@ -7,6 +7,7 @@ import {
   BedDouble,
 } from 'lucide-react';
 import { useAppData } from '@/store/hooks';
+import { useApp } from '@/store/appStore';
 import { useI18n } from '@/i18n';
 import {
   computeKpis, lastNMonths, monthLabel, revenueByMonth, reservationsByMonth,
@@ -30,6 +31,10 @@ import type { Reservation } from '@/types';
 export default function Dashboard() {
   const { t, lang } = useI18n();
   const data = useAppData();
+  // Financial statistics (revenue, expenses, balance, debts, cash, remaining
+  // amounts) are ADMIN-ONLY. Workers see only apartment/reservation info and
+  // alerts — never money figures.
+  const isAdmin = useApp((s) => s.user?.role === 'admin');
   // Live LOCAL date (toISOString would give the UTC date, which lags the
   // system date and made same-day alerts show as "in 1 day").
   const today = useToday();
@@ -71,11 +76,15 @@ export default function Dashboard() {
   const recentTx = data.cashTransactions.slice(0, 5);
   const recentExp = data.expenses.slice(0, 5);
 
-  const kpiCards = [
+  // Money KPIs — admin only.
+  const moneyKpiCards = [
     { label: t('dash.revenue'), value: kpis.monthRevenue, icon: <TrendingUp size={22} />, gradient: 'success' as const, format: formatDA },
     { label: t('dash.expenses'), value: kpis.monthExpenses, icon: <TrendingDown size={22} />, gradient: 'warning' as const, format: formatDA },
     { label: t('dash.balance'), value: kpis.balance, icon: <Wallet size={22} />, gradient: 'secondary' as const, format: formatDA },
     { label: t('dash.debts'), value: kpis.clientDebts, icon: <AlertCircle size={22} />, gradient: 'gold' as const, format: formatDA },
+  ];
+  // Non-financial KPIs — shown to everyone (apartments, reservations, clients…).
+  const infoKpiCards = [
     { label: t('dash.roomsAvailable'), value: kpis.roomsAvailable, icon: <BedDouble size={22} />, gradient: 'primary' as const, suffix: `/ ${kpis.roomsTotal}` },
     { label: t('dash.activeReservations'), value: kpis.activeToday, icon: <CalendarCheck size={22} />, gradient: 'purple' as const },
     { label: t('dash.occupancy'), value: kpis.occupancy, icon: <PieIcon size={22} />, gradient: 'cyan' as const, suffix: '%' },
@@ -84,8 +93,9 @@ export default function Dashboard() {
     { label: t('dash.activeWorkers'), value: kpis.activeWorkers, icon: <HardHat size={22} />, gradient: 'teal' as const },
     { label: t('dash.monthReservations'), value: kpis.monthReservations, icon: <CalendarDays size={22} />, gradient: 'purple' as const },
   ];
+  const kpiCards = isAdmin ? [...moneyKpiCards, ...infoKpiCards] : infoKpiCards;
 
-  const hasAlerts = debtClients.length || expiringToday.length || maintRooms.length;
+  const hasAlerts = (isAdmin && debtClients.length) || expiringToday.length || maintRooms.length;
 
   // Imminent / today / overdue reservation alerts (shared engine with Reservations page)
   const resAlertGroups = useMemo(() => {
@@ -152,6 +162,7 @@ export default function Dashboard() {
                 reservations={resAlertGroups[type]}
                 data={data}
                 lang={lang}
+                showMoney={isAdmin}
                 onSelect={setDetailRes}
               />
             ))}
@@ -181,35 +192,39 @@ export default function Dashboard() {
               <div><p className="text-xs text-ink-muted">Arrivée</p><p className="font-medium">{formatDate(detailRes.checkIn, lang)}</p></div>
               <div><p className="text-xs text-ink-muted">Départ</p><p className="font-medium">{formatDate(detailRes.checkOut, lang)}</p></div>
               <div><p className="text-xs text-ink-muted">Appartements</p><p className="font-medium">{reservationRoomLabels(data, detailRes)}</p></div>
-              <div><p className="text-xs text-ink-muted">Total</p><p className="font-medium">{formatDA(detailRes.total)}</p></div>
-              <div><p className="text-xs text-ink-muted">Reste dû</p><p className={`font-bold ${reservationRemaining(detailRes) > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{formatDA(reservationRemaining(detailRes))}</p></div>
+              {isAdmin && <div><p className="text-xs text-ink-muted">Total</p><p className="font-medium">{formatDA(detailRes.total)}</p></div>}
+              {isAdmin && <div><p className="text-xs text-ink-muted">Reste dû</p><p className={`font-bold ${reservationRemaining(detailRes) > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{formatDA(reservationRemaining(detailRes))}</p></div>}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Charts */}
+      {/* Charts — revenue & expenses breakdowns are admin-only (money). */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        <SectionCard title={t('dash.revenueChart')} icon={<TrendingUp size={18} />}>
-          <RevenueAreaChart data={revenueData} />
-        </SectionCard>
+        {isAdmin && (
+          <SectionCard title={t('dash.revenueChart')} icon={<TrendingUp size={18} />}>
+            <RevenueAreaChart data={revenueData} />
+          </SectionCard>
+        )}
         <SectionCard title={t('dash.reservationsChart')} icon={<CalendarCheck size={18} />}>
           <CountBarChart data={resData} />
         </SectionCard>
         <SectionCard title={t('dash.occupancyByFloor')} icon={<BedDouble size={18} />}>
           <HorizontalBars data={occFloor} />
         </SectionCard>
-        <SectionCard title={t('dash.expensesByCategory')} icon={<PieIcon size={18} />}>
-          <DonutChart data={expCat} />
-          <ChartLegend data={expCat} />
-        </SectionCard>
+        {isAdmin && (
+          <SectionCard title={t('dash.expensesByCategory')} icon={<PieIcon size={18} />}>
+            <DonutChart data={expCat} />
+            <ChartLegend data={expCat} />
+          </SectionCard>
+        )}
       </div>
 
       {/* Alerts */}
       <SectionCard title={t('dash.alerts')} icon={<Bell size={18} />} className="mb-6">
         {hasAlerts ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {debtClients.map(([cid, amount]) => (
+            {isAdmin && debtClients.map(([cid, amount]) => (
               <AlertRow
                 key={cid}
                 tone="danger"
@@ -261,6 +276,8 @@ export default function Dashboard() {
           </ul>
         </SectionCard>
 
+        {isAdmin && (
+        <>
         <SectionCard title={t('dash.recentTransactions')} icon={<Wallet size={18} />}>
           <ul className="space-y-2.5">
             {recentTx.map((tx) => (
@@ -295,6 +312,8 @@ export default function Dashboard() {
             ))}
           </ul>
         </SectionCard>
+        </>
+        )}
       </div>
     </div>
   );
@@ -332,12 +351,13 @@ function AlertRow({
 }
 
 function ReservationAlertGroup({
-  type, reservations, data, lang, onSelect,
+  type, reservations, data, lang, showMoney, onSelect,
 }: {
   type: ReservationAlertType;
   reservations: Reservation[];
   data: ReturnType<typeof useAppData>;
   lang: 'fr' | 'ar';
+  showMoney: boolean;
   onSelect: (r: Reservation) => void;
 }) {
   const { t } = useI18n();
@@ -387,7 +407,7 @@ function ReservationAlertGroup({
                 <CalendarDays size={11} />
                 {formatDate(r.checkIn, lang)} → {formatDate(r.checkOut, lang)}
               </div>
-              {remaining > 0 && (
+              {showMoney && remaining > 0 && (
                 <p className="text-xs font-semibold text-amber-600 mt-1">{t('common.remaining')}: {formatDA(remaining)}</p>
               )}
             </motion.button>
