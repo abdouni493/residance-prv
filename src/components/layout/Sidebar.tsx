@@ -21,8 +21,12 @@ export function Sidebar({ onNavigate, pinned = false, onTogglePin }: SidebarProp
   const storeInfo = useApp((s) => s.storeInfo);
   const logout = useApp((s) => s.logout);
   const perms = useCurrentPermissions();
+  const isAdmin = useApp((s) => s.user?.role === 'admin');
 
-  const items = useMemo(() => NAV_ITEMS.filter((i) => canAccess(perms, i.module)), [perms]);
+  const items = useMemo(
+    () => NAV_ITEMS.filter((i) => (!i.adminOnly || isAdmin) && canAccess(perms, i.module)),
+    [perms, isAdmin],
+  );
 
   const handleLogout = () => {
     logout();

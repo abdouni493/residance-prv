@@ -21,6 +21,7 @@ import type {
   ExpenseCategory,
   Maintenance,
   CashTransaction,
+  ExpenseCashTransaction,
   Permissions,
   ModuleKey,
 } from '@/types';
@@ -212,6 +213,16 @@ function dbToCashTransaction(row: Record<string, unknown>): CashTransaction {
   };
 }
 
+function dbToExpenseCashTransaction(row: Record<string, unknown>): ExpenseCashTransaction {
+  return {
+    id: row.id as string,
+    type: row.type as ExpenseCashTransaction['type'],
+    amount: row.amount as number,
+    description: row.description as string,
+    date: row.date as string,
+  };
+}
+
 function dbToStoreInfo(row: Record<string, unknown>): StoreInfo {
   return {
     name: (row.name as string) || 'Ma Résidence',
@@ -357,6 +368,14 @@ interface AppState extends AppData, AuthState {
   // Cash
   addCashTransaction: (t: Omit<CashTransaction, 'id'>) => Promise<void>;
 
+  // Expenses cash box
+  addExpenseCashTransaction: (t: Omit<ExpenseCashTransaction, 'id'>) => Promise<void>;
+  updateExpenseCashTransaction: (
+    id: string,
+    patch: Partial<Omit<ExpenseCashTransaction, 'id'>>,
+  ) => Promise<void>;
+  deleteExpenseCashTransaction: (id: string) => Promise<void>;
+
   // Settings / data
   updateStoreInfo: (patch: Partial<StoreInfo>) => Promise<void>;
   exportData: () => string;
@@ -391,6 +410,7 @@ export const useApp = create<AppState>()((set, get) => ({
         expCatsRes,
         maintenancesRes,
         cashRes,
+        expenseCashRes,
         settingsRes,
       ] = await Promise.all([
         supabase.from('clients').select('*').order('created_at', { ascending: false }),
@@ -410,6 +430,7 @@ export const useApp = create<AppState>()((set, get) => ({
         supabase.from('expense_categories').select('*').order('name'),
         supabase.from('maintenances').select('*').order('date', { ascending: false }),
         supabase.from('cash_transactions').select('*').order('date', { ascending: false }),
+        supabase.from('expense_cash_transactions').select('*').order('date', { ascending: false }),
         supabase.from('settings').select('*').single(),
       ]);
 
@@ -436,6 +457,9 @@ export const useApp = create<AppState>()((set, get) => ({
         ),
         cashTransactions: ((cashRes.data ?? []) as Record<string, unknown>[]).map(
           dbToCashTransaction,
+        ),
+        expenseCashTransactions: ((expenseCashRes.data ?? []) as Record<string, unknown>[]).map(
+          dbToExpenseCashTransaction,
         ),
         roles,
         storeInfo: settingsRes.data
@@ -1373,6 +1397,62 @@ export const useApp = create<AppState>()((set, get) => ({
     set((s) => ({ cashTransactions: [tx, ...s.cashTransactions] }));
   },
 
+  // ── EXPENSES CASH BOX ────────────────────────────────────────────────────
+
+  addExpenseCashTransaction: async (t) => {
+    const { data, error } = await supabase
+      .from('expense_cash_transactions')
+      .insert({
+        type: t.type,
+        amount: t.amount,
+        description: t.description,
+        date: t.date,
+      })
+      .select()
+      .single();
+    if (error || !data) {
+      console.error('addExpenseCashTransaction failed:', error);
+      throw error ?? new Error('Failed to add expense cash transaction');
+    }
+    const tx: ExpenseCashTransaction = {
+      ...t,
+      id: (data as Record<string, unknown>).id as string,
+    };
+    set((s) => ({ expenseCashTransactions: [tx, ...s.expenseCashTransactions] }));
+  },
+
+  updateExpenseCashTransaction: async (id, patch) => {
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.type !== undefined) dbPatch.type = patch.type;
+    if (patch.amount !== undefined) dbPatch.amount = patch.amount;
+    if (patch.description !== undefined) dbPatch.description = patch.description;
+    if (patch.date !== undefined) dbPatch.date = patch.date;
+    const { error } = await supabase
+      .from('expense_cash_transactions')
+      .update(dbPatch)
+      .eq('id', id);
+    if (error) {
+      console.error('updateExpenseCashTransaction failed:', error);
+      throw error;
+    }
+    set((s) => ({
+      expenseCashTransactions: s.expenseCashTransactions.map((tx) =>
+        tx.id === id ? { ...tx, ...patch } : tx,
+      ),
+    }));
+  },
+
+  deleteExpenseCashTransaction: async (id) => {
+    const { error } = await supabase.from('expense_cash_transactions').delete().eq('id', id);
+    if (error) {
+      console.error('deleteExpenseCashTransaction failed:', error);
+      throw error;
+    }
+    set((s) => ({
+      expenseCashTransactions: s.expenseCashTransactions.filter((tx) => tx.id !== id),
+    }));
+  },
+
   // ── SETTINGS / DATA ───────────────────────────────────────────────────────
 
   updateStoreInfo: async (patch) => {
@@ -1410,6 +1490,7 @@ export const useApp = create<AppState>()((set, get) => ({
       expenseCategories: s.expenseCategories,
       maintenances: s.maintenances,
       cashTransactions: s.cashTransactions,
+      expenseCashTransactions: s.expenseCashTransactions,
       roles: s.roles,
     };
     return JSON.stringify(snapshot, null, 2);
@@ -1431,6 +1512,7 @@ export const useApp = create<AppState>()((set, get) => ({
         expenseCategories: d.expenseCategories ?? [],
         maintenances: d.maintenances ?? [],
         cashTransactions: d.cashTransactions ?? [],
+        expenseCashTransactions: d.expenseCashTransactions ?? [],
         roles: d.roles ?? [],
       });
       return true;

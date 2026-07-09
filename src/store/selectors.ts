@@ -191,6 +191,159 @@ export function caisseBalance(data: AppData): number {
   return caisseRecap(data, farPast, farFuture).net;
 }
 
+// -------- Caisse dépenses (expenses cash box) --------
+//
+// A cash box that exists only to fund expenses:
+//   • credited by manual deposits
+//   • debited by manual withdrawals AND by every expense / maintenance
+//     recorded on the Expenses page.
+
+export const FAR_PAST = '2000-01-01';
+export const FAR_FUTURE = '2999-12-31';
+
+export type ExpenseCaisseEntryKind = 'deposit' | 'withdrawal' | 'expense' | 'maintenance';
+
+export interface ExpenseCaisseEntry {
+  id: string;
+  kind: ExpenseCaisseEntryKind;
+  /** Money entering (deposit) or leaving (everything else) the box. */
+  direction: 'in' | 'out';
+  title: string;
+  /** Category name, room name, or the transaction type label. */
+  subtitle: string;
+  description?: string;
+  amount: number;
+  date: string;
+  /** Only manual transactions can be edited/removed from the cash box UI. */
+  removable: boolean;
+}
+
+export interface ExpensesCaisseRecap {
+  deposits: number;
+  withdrawals: number;
+  generalExpenses: number;
+  maintenances: number;
+  /** withdrawals + generalExpenses + maintenances */
+  totalOut: number;
+  /** deposits − totalOut */
+  net: number;
+  expensesByCategory: { name: string; total: number }[];
+  maintenancesByRoom: { name: string; total: number }[];
+  /** Number of expense rows (general + maintenance) inside the range. */
+  expenseCount: number;
+}
+
+export function expensesCaisseRecap(data: AppData, from: string, to: string): ExpensesCaisseRecap {
+  const deposits = data.expenseCashTransactions
+    .filter((t) => t.type === 'deposit' && inRange(t.date, from, to))
+    .reduce((s, t) => s + t.amount, 0);
+  const withdrawals = data.expenseCashTransactions
+    .filter((t) => t.type === 'withdrawal' && inRange(t.date, from, to))
+    .reduce((s, t) => s + t.amount, 0);
+
+  const catMap = new Map<string, number>();
+  let generalExpenses = 0;
+  let expenseCount = 0;
+  for (const e of data.expenses) {
+    if (!inRange(e.date, from, to)) continue;
+    generalExpenses += e.amount;
+    expenseCount++;
+    const cat = data.expenseCategories.find((c) => c.id === e.categoryId)?.name ?? 'Divers';
+    catMap.set(cat, (catMap.get(cat) ?? 0) + e.amount);
+  }
+
+  const roomMap = new Map<string, number>();
+  let maintenances = 0;
+  for (const m of data.maintenances) {
+    if (!inRange(m.date, from, to)) continue;
+    maintenances += m.cost;
+    expenseCount++;
+    const rname = data.rooms.find((r) => r.id === m.roomId)?.name ?? '—';
+    roomMap.set(rname, (roomMap.get(rname) ?? 0) + m.cost);
+  }
+
+  const totalOut = withdrawals + generalExpenses + maintenances;
+  return {
+    deposits,
+    withdrawals,
+    generalExpenses,
+    maintenances,
+    totalOut,
+    net: deposits - totalOut,
+    expensesByCategory: [...catMap.entries()]
+      .map(([name, total]) => ({ name, total }))
+      .sort((a, b) => b.total - a.total),
+    maintenancesByRoom: [...roomMap.entries()]
+      .map(([name, total]) => ({ name, total }))
+      .sort((a, b) => b.total - a.total),
+    expenseCount,
+  };
+}
+
+/** All-time balance of the expenses cash box. */
+export function expensesCaisseBalance(data: AppData): number {
+  return expensesCaisseRecap(data, FAR_PAST, FAR_FUTURE).net;
+}
+
+/**
+ * Every movement of the expenses cash box inside [from,to] — manual deposits and
+ * withdrawals side by side with the expenses and maintenances that drained it —
+ * newest first.
+ */
+export function expensesCaisseEntries(
+  data: AppData,
+  from: string,
+  to: string,
+): ExpenseCaisseEntry[] {
+  const entries: ExpenseCaisseEntry[] = [];
+
+  for (const t of data.expenseCashTransactions) {
+    if (!inRange(t.date, from, to)) continue;
+    entries.push({
+      id: t.id,
+      kind: t.type,
+      direction: t.type === 'deposit' ? 'in' : 'out',
+      title: t.description,
+      subtitle: '',
+      amount: t.amount,
+      date: t.date,
+      removable: true,
+    });
+  }
+
+  for (const e of data.expenses) {
+    if (!inRange(e.date, from, to)) continue;
+    entries.push({
+      id: e.id,
+      kind: 'expense',
+      direction: 'out',
+      title: e.name,
+      subtitle: data.expenseCategories.find((c) => c.id === e.categoryId)?.name ?? 'Divers',
+      description: e.description,
+      amount: e.amount,
+      date: e.date,
+      removable: false,
+    });
+  }
+
+  for (const m of data.maintenances) {
+    if (!inRange(m.date, from, to)) continue;
+    entries.push({
+      id: m.id,
+      kind: 'maintenance',
+      direction: 'out',
+      title: m.name,
+      subtitle: data.rooms.find((r) => r.id === m.roomId)?.name ?? '—',
+      description: m.description,
+      amount: m.cost,
+      date: m.date,
+      removable: false,
+    });
+  }
+
+  return entries.sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? 1 : -1));
+}
+
 // -------- Dashboard KPIs --------
 export interface Kpis {
   monthRevenue: number;

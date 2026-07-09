@@ -23,10 +23,14 @@ export const MODULE_ACTIONS: Record<ModuleKey, ActionKey[]> = {
   workers: ['view', 'create', 'edit', 'delete', 'pay'],
   expenses: ['view', 'create', 'edit', 'delete'],
   caisse: ['view', 'create'],
+  expensesCaisse: ['view', 'create', 'delete'],
   reports: ['view', 'print'],
   settings: ['view', 'edit'],
 };
 
+// Modules a worker can be granted access to. `expensesCaisse` is deliberately
+// absent: the expenses cash box is admin-only, like the money figures on the
+// dashboard, so it can never be handed to a worker from the permissions matrix.
 export const MODULE_ORDER: ModuleKey[] = [
   'dashboard',
   'reservations',

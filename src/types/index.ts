@@ -23,6 +23,7 @@ export type ModuleKey =
   | 'workers'
   | 'expenses'
   | 'caisse'
+  | 'expensesCaisse'
   | 'reports'
   | 'settings';
 
@@ -201,6 +202,18 @@ export interface Expense {
 export type CashType = 'deposit' | 'withdrawal';
 
 export interface CashTransaction {
+  id: string;
+  type: CashType;
+  amount: number;
+  description: string;
+  date: string;
+}
+
+// ============ CAISSE DÉPENSES ============
+// A cash box dedicated to funding expenses. It is credited by manual deposits
+// and debited by manual withdrawals AND by every expense/maintenance recorded
+// on the Expenses page.
+export interface ExpenseCashTransaction {
   id: string;
   type: CashType;
   amount: number;

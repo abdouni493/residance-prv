@@ -18,6 +18,7 @@ const Clients = lazy(() => import('@/pages/Clients'));
 const Workers = lazy(() => import('@/pages/Workers'));
 const Expenses = lazy(() => import('@/pages/Expenses'));
 const Caisse = lazy(() => import('@/pages/Caisse'));
+const ExpensesCaisse = lazy(() => import('@/pages/ExpensesCaisse'));
 const Reports = lazy(() => import('@/pages/Reports'));
 const Settings = lazy(() => import('@/pages/Settings'));
 
@@ -31,6 +32,7 @@ const preload = () => {
   import('@/pages/Services');
   import('@/pages/Expenses');
   import('@/pages/Caisse');
+  import('@/pages/ExpensesCaisse');
   import('@/pages/Reports');
   import('@/pages/Settings');
 };
@@ -50,6 +52,13 @@ function PageShell({ children }: { children: ReactNode }) {
 function RequireModule({ module, children }: { module: ModuleKey; children: ReactNode }) {
   const perms = useCurrentPermissions();
   if (!canAccess(perms, module)) return <Navigate to="/app/dashboard" replace />;
+  return <>{children}</>;
+}
+
+/** Guards routes that hold money the residence never shows to a worker. */
+function RequireAdmin({ children }: { children: ReactNode }) {
+  const isAdmin = useApp((s) => s.user?.role === 'admin');
+  if (!isAdmin) return <Navigate to="/app/dashboard" replace />;
   return <>{children}</>;
 }
 
@@ -86,6 +95,10 @@ function AppRoutes() {
         <Route
           path="caisse"
           element={<PageShell><RequireModule module="caisse"><Caisse /></RequireModule></PageShell>}
+        />
+        <Route
+          path="expenses-caisse"
+          element={<PageShell><RequireAdmin><ExpensesCaisse /></RequireAdmin></PageShell>}
         />
         <Route
           path="reports"

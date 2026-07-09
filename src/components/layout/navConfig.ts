@@ -7,6 +7,7 @@ import {
   HardHat,
   ReceiptText,
   Wallet,
+  PiggyBank,
   ChartColumnBig,
   Settings2,
   type LucideIcon,
@@ -20,6 +21,8 @@ export interface NavItem {
   labelKey: string;
   icon: LucideIcon;
   color: GradientKey;
+  /** Hidden from every worker account, whatever its permissions. */
+  adminOnly?: boolean;
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -31,6 +34,7 @@ export const NAV_ITEMS: NavItem[] = [
   { module: 'workers', path: '/app/workers', labelKey: 'nav.workers', icon: HardHat, color: 'teal' },
   { module: 'expenses', path: '/app/expenses', labelKey: 'nav.expenses', icon: ReceiptText, color: 'warning' },
   { module: 'caisse', path: '/app/caisse', labelKey: 'nav.caisse', icon: Wallet, color: 'success' },
+  { module: 'expensesCaisse', path: '/app/expenses-caisse', labelKey: 'nav.expensesCaisse', icon: PiggyBank, color: 'rose', adminOnly: true },
   { module: 'reports', path: '/app/reports', labelKey: 'nav.reports', icon: ChartColumnBig, color: 'cyan' },
   { module: 'settings', path: '/app/settings', labelKey: 'nav.settings', icon: Settings2, color: 'primary' },
 ];

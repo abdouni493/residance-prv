@@ -18,6 +18,7 @@ export function useAppData(): AppData {
   const expenseCategories = useApp((s) => s.expenseCategories);
   const maintenances = useApp((s) => s.maintenances);
   const cashTransactions = useApp((s) => s.cashTransactions);
+  const expenseCashTransactions = useApp((s) => s.expenseCashTransactions);
   const roles = useApp((s) => s.roles);
 
   return useMemo(
@@ -33,6 +34,7 @@ export function useAppData(): AppData {
       expenseCategories,
       maintenances,
       cashTransactions,
+      expenseCashTransactions,
       roles,
     }),
     [
@@ -47,6 +49,7 @@ export function useAppData(): AppData {
       expenseCategories,
       maintenances,
       cashTransactions,
+      expenseCashTransactions,
       roles,
     ],
   );

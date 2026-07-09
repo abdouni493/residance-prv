@@ -222,3 +222,12 @@ CREATE TABLE public.cash_transactions (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT cash_transactions_pkey PRIMARY KEY (id)
 );
+CREATE TABLE public.expense_cash_transactions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  type text NOT NULL CHECK (type = ANY (ARRAY['deposit'::text, 'withdrawal'::text])),
+  amount numeric NOT NULL CHECK (amount >= 0),
+  description text NOT NULL,
+  date date NOT NULL DEFAULT CURRENT_DATE,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT expense_cash_transactions_pkey PRIMARY KEY (id)
+);

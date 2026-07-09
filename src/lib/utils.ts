@@ -67,6 +67,18 @@ export function addDaysISO(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Shift an ISO date by a number of calendar months, clamping to the last valid
+ *  day of the target month (2025-03-31 minus 1 month -> 2025-02-28). */
+export function addMonthsISO(iso: string, months: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return iso;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const target = new Date(y, mo - 1 + months, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(d, lastDay));
+  return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`;
+}
+
 /** Number of nights between two ISO dates */
 export function nightsBetween(startISO: string, endISO: string): number {
   if (!startISO || !endISO) return 0;
