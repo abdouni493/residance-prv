@@ -1,8 +1,8 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ChevronLeft, ChevronRight, Building2, X, Phone, User, CalendarDays, Calendar,
-  TrendingUp, BedDouble, CalendarClock, ArrowRight,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Building2, X, Phone, User,
+  CalendarDays, Calendar, TrendingUp, BedDouble, CalendarClock, ArrowRight, Moon,
 } from 'lucide-react';
 import { GradientButton } from '@/components/ui/GradientButton';
 import { useAppData } from '@/store/hooks';
@@ -13,7 +13,34 @@ import { ResStatusBadge } from '@/components/ResStatusBadge';
 import { reservationRemaining } from '@/store/selectors';
 import type { Reservation, ReservationStatus } from '@/types';
 
-const CELL = 40;
+const CELL = 44;
+const SIDE = 210;      // width of the sticky room-label column
+const LANE_H = 30;     // height of one reservation bar
+const LANE_GAP = 4;    // vertical gap between stacked bars
+const ROW_MIN_H = 58;  // minimum room-row height
+
+const MS_DAY = 86_400_000;
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const isoOf = (y: number, m: number, d: number) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
+
+/** Whole days between two yyyy-mm-dd dates. Parsed as UTC on both sides so the
+ *  result is never skewed by the local timezone offset. May be negative. */
+function dayOffset(baseISO: string, iso: string): number {
+  return Math.round((Date.parse(`${iso}T00:00:00Z`) - Date.parse(`${baseISO}T00:00:00Z`)) / MS_DAY);
+}
+
+/** One reservation laid out against the visible month: clamped to the month's
+ *  bounds, with flags telling us it bleeds into the previous / next month. */
+type Segment = {
+  res: Reservation;
+  start: number;       // first visible column (0-based)
+  span: number;        // number of columns covered inside this month
+  nights: number;      // total nights of the reservation (not just visible ones)
+  contLeft: boolean;   // starts before the 1st of this month
+  contRight: boolean;  // ends after the last of this month
+  lane: number;        // stacking row inside the room track
+};
 
 // Semantic colour system — every reservation block is coloured by its status so
 // the timeline reads at a glance and matches the legend exactly.
@@ -45,6 +72,7 @@ export function CalendarTimeline({
   const data = useAppData();
   const today = todayISO();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const todayColRef = useRef<HTMLDivElement>(null);
 
   // Navigation and filter states
   const [monthOffset, setMonthOffset] = useState(0);
@@ -52,34 +80,56 @@ export function CalendarTimeline({
   const [selectedRoomId, setSelectedRoomId] = useState<string | 'all'>('all');
   const [popover, setPopover] = useState<{ res: Reservation; x: number; y: number } | null>(null);
 
-  const { year, month, daysInMonth, monthLabel, days } = useMemo(() => {
+  // Bring today's column into view whenever we land on the current month, so the
+  // timeline doesn't open scrolled to the 1st on a 31-column grid.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const scroller = scrollRef.current;
+    const col = todayColRef.current;
+    if (!scroller || !col) return;
+    scroller.scrollLeft = Math.max(0, col.offsetLeft - SIDE - CELL * 2);
+  }, [open, monthOffset]);
+
+  // Any keyboard-driven navigation people expect from a full-screen calendar.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setPopover(null); onClose(); }
+      else if (e.key === 'ArrowLeft') setMonthOffset((o) => o - 1);
+      else if (e.key === 'ArrowRight') setMonthOffset((o) => o + 1);
+      else if (e.key.toLowerCase() === 't') setMonthOffset(0);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  const { year, month, daysInMonth, monthLabel, days, prevMonthLabel, nextMonthLabel } = useMemo(() => {
+    const locale = lang === 'ar' ? 'ar-DZ' : 'fr-FR';
     const d = new Date();
     d.setDate(1);
     d.setMonth(d.getMonth() + monthOffset);
     const year = d.getFullYear();
     const month = d.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const monthLabel = d.toLocaleDateString(lang === 'ar' ? 'ar-DZ' : 'fr-FR', { month: 'long', year: 'numeric' });
+    const monthLabel = d.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+    const prevMonthLabel = new Date(year, month - 1, 1).toLocaleDateString(locale, { month: 'long' });
+    const nextMonthLabel = new Date(year, month + 1, 1).toLocaleDateString(locale, { month: 'long' });
     const days = Array.from({ length: daysInMonth }, (_, i) => {
       const date = new Date(year, month, i + 1);
+      const iso = isoOf(year, month, i + 1);
       return {
         num: i + 1,
-        iso: date.toISOString().slice(0, 10),
-        weekday: date.toLocaleDateString(lang === 'ar' ? 'ar-DZ' : 'fr-FR', { weekday: 'narrow' }),
-        isToday: date.toISOString().slice(0, 10) === today,
+        iso,
+        weekday: date.toLocaleDateString(locale, { weekday: 'narrow' }),
+        isToday: iso === today,
         isWeekend: date.getDay() === 5 || date.getDay() === 6,
       };
     });
-    return { year, month, daysInMonth, monthLabel, days };
+    return { year, month, daysInMonth, monthLabel, days, prevMonthLabel, nextMonthLabel };
   }, [monthOffset, lang, today]);
 
-  const monthStart = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-  const monthEnd = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
-
-  const dayIndexOf = (iso: string): number => {
-    const d = new Date(iso);
-    return d.getDate() - 1;
-  };
+  const monthStart = isoOf(year, month, 1);
+  const monthEnd = isoOf(year, month, daysInMonth);
 
   const handleBarClick = (e: React.MouseEvent, r: Reservation) => {
     e.stopPropagation();
@@ -91,6 +141,64 @@ export function CalendarTimeline({
     if (selectedRoomId === 'all') return data.rooms;
     return data.rooms.filter((room) => room.id === selectedRoomId);
   }, [data.rooms, selectedRoomId]);
+
+  /** Lay every reservation out against the visible month.
+   *
+   *  A reservation is a half-open range [checkIn, checkOut): the guest sleeps on
+   *  checkIn but not on checkOut, so the bar covers `checkOut - checkIn` columns.
+   *  Both ends are measured as an offset from the 1st of the visible month and
+   *  then clamped to it — that is what lets a stay running from 28 June to 5 July
+   *  render as a full 4-day bar starting on 1 July (flagged as continuing left)
+   *  instead of collapsing to a stray one-day block.
+   *
+   *  Reservations that overlap in the same room are pushed onto separate lanes so
+   *  they never sit on top of each other. */
+  const roomLayout = useMemo(() => {
+    const map = new Map<string, { segments: Segment[]; laneCount: number }>();
+
+    for (const room of filteredRooms) {
+      const list = data.reservations
+        .filter((r) => {
+          if (r.status === 'cancelled') return false;
+          if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+          if (!r.rooms.some((rr) => rr.roomId === room.id)) return false;
+          // Overlaps the month at all: starts on/before the last day and still
+          // has at least one night on/after the 1st.
+          return r.checkIn <= monthEnd && r.checkOut > monthStart;
+        })
+        .sort((a, b) => a.checkIn.localeCompare(b.checkIn) || a.checkOut.localeCompare(b.checkOut));
+
+      const laneEnds: number[] = []; // exclusive end column of the last bar in each lane
+      const segments: Segment[] = list.map((r) => {
+        const rawStart = dayOffset(monthStart, r.checkIn);   // < 0 when it began last month
+        const rawEnd = dayOffset(monthStart, r.checkOut);    // > daysInMonth when it runs on
+        const start = Math.max(0, rawStart);
+        const end = Math.min(daysInMonth, rawEnd);
+
+        let lane = laneEnds.findIndex((e) => e <= start);
+        if (lane === -1) {
+          lane = laneEnds.length;
+          laneEnds.push(end);
+        } else {
+          laneEnds[lane] = end;
+        }
+
+        return {
+          res: r,
+          start,
+          span: Math.max(1, end - start),
+          nights: Math.max(1, dayOffset(r.checkIn, r.checkOut)),
+          contLeft: rawStart < 0,
+          contRight: rawEnd > daysInMonth,
+          lane,
+        };
+      });
+
+      map.set(room.id, { segments, laneCount: Math.max(1, laneEnds.length) });
+    }
+
+    return map;
+  }, [filteredRooms, data.reservations, statusFilter, monthStart, monthEnd, daysInMonth]);
 
   // Professional summary metrics for the visible month.
   const stats = useMemo(() => {
@@ -137,14 +245,23 @@ export function CalendarTimeline({
       cells.push({ dayNum: null, iso: null });
     }
     for (let i = 1; i <= daysInMonth; i++) {
-      const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-      cells.push({ dayNum: i, iso });
+      cells.push({ dayNum: i, iso: isoOf(year, month, i) });
     }
     while (cells.length % 7 !== 0) {
       cells.push({ dayNum: null, iso: null });
     }
     return cells;
   }, [selectedRoomId, year, month, daysInMonth]);
+
+  // Reservations for the focused apartment — computed once, not per grid cell.
+  const focusRes = useMemo(() => {
+    if (selectedRoomId === 'all') return [];
+    return data.reservations.filter((r) => {
+      if (r.status === 'cancelled') return false;
+      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+      return r.rooms.some((rr) => rr.roomId === selectedRoomId);
+    });
+  }, [data.reservations, selectedRoomId, statusFilter]);
 
   const weekDays = lang === 'ar'
     ? ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد']
@@ -251,6 +368,7 @@ export function CalendarTimeline({
             <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
               <button
                 onClick={() => setMonthOffset((o) => o - 1)}
+                title={prevMonthLabel}
                 className="h-8 w-8 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-ink-primary flex items-center justify-center transition-all active:scale-90"
               >
                 <ChevronLeft size={16} />
@@ -267,6 +385,7 @@ export function CalendarTimeline({
               </button>
               <button
                 onClick={() => setMonthOffset((o) => o + 1)}
+                title={nextMonthLabel}
                 className="h-8 w-8 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-ink-primary flex items-center justify-center transition-all active:scale-90"
               >
                 <ChevronRight size={16} />
@@ -286,16 +405,20 @@ export function CalendarTimeline({
             className="rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/50 overflow-hidden"
           >
             <div ref={scrollRef} className="overflow-x-auto">
-              <div style={{ minWidth: 200 + daysInMonth * CELL }}>
+              <div style={{ width: SIDE + daysInMonth * CELL }}>
                 {/* Day Header Row */}
                 <div className="flex bg-slate-50/90 border-b border-slate-200 py-2 sticky top-0 z-10 backdrop-blur">
-                  <div className="w-[200px] shrink-0 px-4 flex items-center gap-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider border-e border-slate-200">
+                  <div
+                    className="shrink-0 px-4 flex items-center gap-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider border-e border-slate-200 bg-slate-50/90 sticky start-0 z-10"
+                    style={{ width: SIDE }}
+                  >
                     <Building2 size={14} className="text-blue-500" />
                     {t('nav.chambres')}
                   </div>
                   {days.map((d) => (
                     <div
                       key={d.iso}
+                      ref={d.isToday ? todayColRef : undefined}
                       style={{ width: CELL }}
                       className={cn('shrink-0 text-center flex flex-col items-center justify-center', d.isWeekend && 'bg-slate-50')}
                     >
@@ -322,41 +445,40 @@ export function CalendarTimeline({
                   className="divide-y divide-slate-100"
                 >
                   {filteredRooms.map((room) => {
-                    const roomRes = data.reservations.filter((r) => {
-                      if (r.status === 'cancelled') return false;
-                      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
-                      if (!r.rooms.some((rr) => rr.roomId === room.id)) return false;
-                      return r.checkIn <= monthEnd && r.checkOut > monthStart;
-                    });
+                    const { segments, laneCount } = roomLayout.get(room.id) ?? { segments: [], laneCount: 1 };
+                    const stackH = laneCount * LANE_H + (laneCount - 1) * LANE_GAP;
+                    const rowH = Math.max(ROW_MIN_H, stackH + 16);
+                    const padTop = (rowH - stackH) / 2;
 
                     return (
                       <motion.div
                         key={room.id}
                         variants={{ initial: { opacity: 0, x: -10 }, animate: { opacity: 1, x: 0 } }}
-                        className="flex items-center hover:bg-blue-50/40 transition-colors group"
+                        className="flex hover:bg-blue-50/40 transition-colors group"
+                        style={{ height: rowH }}
                       >
-                        {/* Room label side cell */}
-                        <div className="w-[200px] shrink-0 px-4 py-3 border-e border-slate-200 bg-white group-hover:bg-blue-50/40 transition-colors">
+                        {/* Room label side cell — sticky so it stays readable while scrolling */}
+                        <div
+                          className="shrink-0 px-4 flex flex-col justify-center border-e border-slate-200 bg-white group-hover:bg-blue-50/40 transition-colors sticky start-0 z-[5]"
+                          style={{ width: SIDE }}
+                        >
                           <p className="text-xs font-bold text-ink-primary flex items-center gap-1.5">
-                            <span className="h-2 w-2 rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 shadow-sm shadow-blue-400/50" />
-                            {room.name}
+                            <span className="h-2 w-2 rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 shadow-sm shadow-blue-400/50 shrink-0" />
+                            <span className="truncate">{room.name}</span>
                           </p>
-                          <p className="text-[10px] text-slate-400 truncate font-semibold mt-0.5 ml-3.5">
+                          <p className="text-[10px] text-slate-400 truncate font-semibold mt-0.5 ms-3.5">
                             {categoryName(data, room.categoryId)}
                           </p>
                         </div>
 
-                        {/* Room Track area */}
-                        <div
-                          className="relative flex-1 h-14"
-                          style={{ width: daysInMonth * CELL }}
-                        >
+                        {/* Room track area */}
+                        <div className="relative shrink-0" style={{ width: daysInMonth * CELL }}>
                           {/* Daily grid cells */}
                           {days.map((d, i) => (
                             <div
                               key={d.iso}
                               className={cn(
-                                'absolute top-0 bottom-0 border-e border-slate-100 transition-all',
+                                'absolute top-0 bottom-0 border-e border-slate-100',
                                 d.isWeekend && 'bg-slate-50/70',
                                 d.isToday && 'bg-blue-50',
                               )}
@@ -366,7 +488,7 @@ export function CalendarTimeline({
                             </div>
                           ))}
 
-                          {/* Maintenance Overlay */}
+                          {/* Maintenance overlay */}
                           {room.status === 'maintenance' && (
                             <div
                               className="absolute inset-0 opacity-20 pointer-events-none"
@@ -374,35 +496,19 @@ export function CalendarTimeline({
                             />
                           )}
 
-                          {/* Reservation blocks */}
+                          {/* Reservation bars */}
                           <AnimatePresence>
-                            {roomRes.map((r) => {
-                              const startDay = Math.max(0, dayIndexOf(r.checkIn));
-                              const endDay = Math.min(daysInMonth, dayIndexOf(r.checkOut));
-                              const width = Math.max(1, endDay - startDay) * CELL - 4;
-                              const style = STATUS_STYLES[r.status];
-
-                              return (
-                                <motion.button
-                                  key={r.id}
-                                  initial={{ scaleX: 0, opacity: 0, originX: 0 }}
-                                  animate={{ scaleX: 1, opacity: 1 }}
-                                  exit={{ scaleX: 0, opacity: 0 }}
-                                  whileHover={{ y: -2, scale: 1.015 }}
-                                  transition={{ type: 'spring', stiffness: 320, damping: 26 }}
-                                  className={cn(
-                                    'absolute top-2 bottom-2 rounded-lg px-2.5 text-[10px] font-bold truncate text-white shadow-lg hover:brightness-105 active:scale-95 cursor-pointer flex items-center gap-1.5 bg-gradient-to-r ring-1 ring-white/25',
-                                    style.bar, style.ring,
-                                  )}
-                                  style={{ left: startDay * CELL + 2, width }}
-                                  onClick={(e) => handleBarClick(e, r)}
-                                  title={`${r.code} · ${clientName(data, r.clientId)}`}
-                                >
-                                  <span className="h-1.5 w-1.5 rounded-full bg-white/80 shrink-0 shadow" />
-                                  <span className="truncate">{r.code} · {clientName(data, r.clientId)}</span>
-                                </motion.button>
-                              );
-                            })}
+                            {segments.map((seg) => (
+                              <ReservationBar
+                                key={seg.res.id}
+                                seg={seg}
+                                top={padTop + seg.lane * (LANE_H + LANE_GAP)}
+                                label={clientName(data, seg.res.clientId)}
+                                lang={lang}
+                                nightsLabel={t('common.nights')}
+                                onClick={handleBarClick}
+                              />
+                            ))}
                           </AnimatePresence>
                         </div>
                       </motion.div>
@@ -441,55 +547,74 @@ export function CalendarTimeline({
               {/* Date grid cells */}
               <div className="grid grid-cols-7 gap-2">
                 {gridCells.map((cell, idx) => {
-                  if (cell.dayNum === null || !cell.iso) {
-                    return <div key={`empty-${idx}`} className="aspect-video bg-slate-50/60 border border-slate-100 rounded-xl" />;
+                  const iso = cell.iso;
+                  if (cell.dayNum === null || !iso) {
+                    return <div key={`empty-${idx}`} className="aspect-video bg-slate-50/40 border border-dashed border-slate-100 rounded-xl" />;
                   }
 
-                  const roomRes = data.reservations.filter((r) => {
-                    if (r.status === 'cancelled') return false;
-                    if (statusFilter !== 'all' && r.status !== statusFilter) return false;
-                    return r.rooms.some((rr) => rr.roomId === selectedRoomId);
-                  });
-
-                  const activeRes = roomRes.find((r) => cell.iso && r.checkIn <= cell.iso && r.checkOut > cell.iso);
-                  const isToday = cell.iso === today;
+                  const activeRes = focusRes.find((r) => r.checkIn <= iso && r.checkOut > iso);
+                  const isToday = iso === today;
+                  // Arrival / last-night markers make a multi-month stay obvious even
+                  // when its start or end falls outside the month on screen.
+                  const isArrival = !!activeRes && activeRes.checkIn === iso;
+                  const isLastNight = !!activeRes && dayOffset(iso, activeRes.checkOut) === 1;
+                  const runsIn = !!activeRes && !isArrival && cell.dayNum === 1;
+                  const runsOut = !!activeRes && !isLastNight && cell.dayNum === daysInMonth;
 
                   return (
                     <motion.div
-                      key={cell.iso}
+                      key={iso}
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.2, delay: idx * 0.004 }}
                       className={cn(
                         'relative aspect-video rounded-xl p-2 flex flex-col justify-between border transition-all',
-                        isToday ? 'border-blue-300 bg-blue-50/70 ring-1 ring-blue-200' : 'border-slate-100 bg-slate-50/60 hover:border-slate-200',
+                        isToday
+                          ? 'border-blue-300 bg-blue-50/70 ring-1 ring-blue-200'
+                          : activeRes ? 'border-slate-200 bg-white hover:border-slate-300'
+                          : 'border-slate-100 bg-slate-50/60 hover:border-slate-200',
                       )}
                     >
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-1">
                         <span className={cn(
-                          'text-xs font-bold h-6 w-6 rounded-full flex items-center justify-center',
+                          'text-xs font-bold h-6 w-6 rounded-full flex items-center justify-center shrink-0',
                           isToday ? 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white font-black shadow' : 'text-ink-secondary',
                         )}>
                           {cell.dayNum}
                         </span>
-                        {activeRes && (
-                          <ResStatusBadge status={activeRes.status} />
-                        )}
+                        {activeRes && <ResStatusBadge status={activeRes.status} />}
                       </div>
 
                       {activeRes ? (
                         <button
                           onClick={(e) => handleBarClick(e, activeRes)}
+                          title={`${activeRes.code} · ${formatDate(activeRes.checkIn, lang)} → ${formatDate(activeRes.checkOut, lang)}`}
                           className={cn(
-                            'w-full text-start text-[10px] font-bold p-1.5 rounded-lg text-white bg-gradient-to-r hover:brightness-105 active:scale-95 transition-all shadow-md',
+                            'w-full text-start text-[10px] font-bold p-1.5 text-white bg-gradient-to-r hover:brightness-105 active:scale-95 transition-all shadow-md flex items-center gap-1',
                             STATUS_STYLES[activeRes.status].bar,
+                            // Square off the edge the stay carries through, round the edge where it stops.
+                            isArrival ? 'rounded-s-lg' : 'rounded-s-none',
+                            isLastNight ? 'rounded-e-lg' : 'rounded-e-none',
+                            !isArrival && !isLastNight && 'rounded-none',
                           )}
                         >
-                          <span className="block truncate font-extrabold">{activeRes.code}</span>
-                          <span className="block truncate opacity-90 font-medium">{clientName(data, activeRes.clientId)}</span>
+                          {runsIn && <ChevronsLeft size={12} className="shrink-0 opacity-90" />}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-extrabold">{activeRes.code}</span>
+                            <span className="block truncate opacity-90 font-medium">{clientName(data, activeRes.clientId)}</span>
+                          </span>
+                          {runsOut && <ChevronsRight size={12} className="shrink-0 opacity-90" />}
                         </button>
                       ) : (
                         <span className="text-[9px] text-slate-400 font-semibold italic text-center py-2">{t('res.available')}</span>
+                      )}
+
+                      {/* Corner ticks for the two days that actually bookend the stay. */}
+                      {isArrival && (
+                        <span className="absolute top-1 end-1 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-white" title={t('res.checkInDay')} />
+                      )}
+                      {isLastNight && (
+                        <span className="absolute top-1 end-1 h-1.5 w-1.5 rounded-full bg-rose-500 ring-2 ring-white" title={t('res.checkOutDay')} />
                       )}
                     </motion.div>
                   );
@@ -510,6 +635,13 @@ export function CalendarTimeline({
               <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-secondary">
                 <span className="h-3.5 w-6 rounded border border-slate-200" style={{ backgroundImage: 'repeating-linear-gradient(45deg, #f59e0b, #f59e0b 4px, transparent 4px, transparent 8px)', opacity: 0.55 }} />
                 {t('rooms.maintenance')}
+              </span>
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-secondary">
+                <span className="h-3.5 w-8 rounded-e bg-gradient-to-r from-slate-300 to-slate-400 text-white flex items-center justify-between px-0.5">
+                  <ChevronsLeft size={10} />
+                  <ChevronsRight size={10} />
+                </span>
+                {t('res.spansMonths')}
               </span>
             </div>
           </div>
@@ -579,6 +711,81 @@ export function CalendarTimeline({
         </AnimatePresence>
       </motion.div>
     </AnimatePresence>
+  );
+}
+
+/** A single reservation drawn on a room track.
+ *
+ *  When the stay crosses a month boundary the bar runs flush to the edge of the
+ *  grid with a squared-off corner and a double chevron, so it reads as "this
+ *  continues" rather than as a stay that happens to start/end on the 1st. */
+function ReservationBar({
+  seg, top, label, lang, nightsLabel, onClick,
+}: {
+  seg: Segment;
+  top: number;
+  label: string;
+  lang: 'fr' | 'ar';
+  nightsLabel: string;
+  onClick: (e: React.MouseEvent, r: Reservation) => void;
+}) {
+  const { res, start, span, nights, contLeft, contRight } = seg;
+  const style = STATUS_STYLES[res.status];
+
+  // Bars that stop inside the month get a 2px breathing gap; bars that continue
+  // run right to the edge so the eye carries them off-screen.
+  const left = start * CELL + (contLeft ? 0 : 2);
+  const width = span * CELL - (contLeft ? 0 : 2) - (contRight ? 0 : 2);
+
+  const R = 8;
+  const borderRadius = [
+    contLeft ? 0 : R, contRight ? 0 : R, contRight ? 0 : R, contLeft ? 0 : R,
+  ].map((v) => `${v}px`).join(' ');
+
+  const showText = width >= 74;
+  const showNights = width >= 132;
+
+  const title = [
+    `${res.code} · ${label}`,
+    `${formatDate(res.checkIn, lang)} → ${formatDate(res.checkOut, lang)}`,
+    `${nights} ${nightsLabel}`,
+  ].join('\n');
+
+  return (
+    <motion.button
+      initial={{ scaleX: 0, opacity: 0 }}
+      animate={{ scaleX: 1, opacity: 1 }}
+      exit={{ scaleX: 0, opacity: 0 }}
+      whileHover={{ y: -1 }}
+      transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+      style={{ left, width, top, height: LANE_H, borderRadius, originX: contRight && !contLeft ? 1 : 0 }}
+      className={cn(
+        'absolute px-2 text-[10px] font-bold text-white shadow-md hover:brightness-105 hover:shadow-lg',
+        'active:scale-[0.98] cursor-pointer flex items-center gap-1.5 bg-gradient-to-r ring-1 ring-white/25 overflow-hidden',
+        style.bar, style.ring,
+      )}
+      onClick={(e) => onClick(e, res)}
+      title={title}
+    >
+      {contLeft
+        ? <ChevronsLeft size={13} className="shrink-0 -ms-0.5 opacity-90" />
+        : <span className="h-1.5 w-1.5 rounded-full bg-white/85 shrink-0 shadow" />}
+
+      {showText && (
+        <span className="truncate flex-1 text-start leading-none">
+          <span className="font-extrabold">{res.code}</span>
+          <span className="opacity-85"> · {label}</span>
+        </span>
+      )}
+
+      {showNights && (
+        <span className="shrink-0 flex items-center gap-0.5 rounded-md bg-black/15 px-1.5 py-0.5 text-[9px] font-extrabold tabular-nums">
+          <Moon size={9} />{nights}
+        </span>
+      )}
+
+      {contRight && <ChevronsRight size={13} className="shrink-0 -me-0.5 opacity-90 ms-auto" />}
+    </motion.button>
   );
 }
 
