@@ -59,14 +59,14 @@ export const PRINT_STYLES = `
   @media print { body { padding: 0; } .no-print { display: none !important; } }
 `;
 
-export function printHTML(title: string, bodyHtml: string) {
+export function printHTML(title: string, bodyHtml: string, extraStyles = '') {
   const iframe = document.createElement('iframe');
   iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
   document.body.appendChild(iframe);
   const doc = iframe.contentWindow?.document;
   if (!doc) return;
   doc.open();
-  doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${PRINT_STYLES}</style></head><body>${bodyHtml}</body></html>`);
+  doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${PRINT_STYLES}${extraStyles}</style></head><body>${bodyHtml}</body></html>`);
   doc.close();
   iframe.contentWindow?.focus();
   setTimeout(() => {

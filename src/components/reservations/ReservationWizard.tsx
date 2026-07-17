@@ -301,7 +301,7 @@ export function ReservationWizard({
   const computedTotal = roomsTotal + servicesTotal;
   const finalTotal    = editedTotal === '' ? computedTotal : Number(editedTotal);
   const alreadyPaid   = editing ? reservationPaid(editing) : 0;
-  const paidNum       = amountPaid === '' ? (editing ? alreadyPaid : finalTotal) : Number(amountPaid);
+  const paidNum       = amountPaid === '' ? (editing ? alreadyPaid : 0) : Number(amountPaid);
   const remaining     = Math.max(0, finalTotal - paidNum);
 
   const client = data.clients.find(c => c.id === clientId);
@@ -884,7 +884,7 @@ export function ReservationWizard({
                               <label className="text-xs font-bold text-ink-muted block mb-1.5">{t('res.amountPaid')} (DA)</label>
                               <input
                                 type="number"
-                                value={amountPaid === '' ? String(editing ? alreadyPaid : finalTotal) : amountPaid}
+                                value={amountPaid === '' ? String(editing ? alreadyPaid : 0) : amountPaid}
                                 onChange={e => setAmountPaid(e.target.value)}
                                 className="w-full h-11 rounded-xl border-2 border-slate-200 px-4 text-sm font-bold text-ink-primary outline-none focus:border-brand-400 transition-all"
                               />

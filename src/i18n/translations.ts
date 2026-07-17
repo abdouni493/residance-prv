@@ -349,6 +349,8 @@ export const translations: Record<Lang, Record<string, string>> = {
     // Caisse dépenses
     'expCaisse.title': 'Caisse Dépenses',
     'expCaisse.subtitle': 'Fonds dédié au financement des dépenses',
+    'expCaisse.print': 'Imprimer la liste',
+    'expCaisse.printTitle': 'Journal de la caisse dépenses',
     'expCaisse.balance': 'Solde de la caisse',
     'expCaisse.balanceHint': 'Dépôts − retraits − dépenses',
     'expCaisse.deposit': 'Déposer',
@@ -782,6 +784,8 @@ export const translations: Record<Lang, Record<string, string>> = {
     // Caisse dépenses
     'expCaisse.title': 'صندوق المصاريف',
     'expCaisse.subtitle': 'رصيد مخصّص لتمويل المصاريف',
+    'expCaisse.print': 'طباعة القائمة',
+    'expCaisse.printTitle': 'سجل صندوق المصاريف',
     'expCaisse.balance': 'رصيد الصندوق',
     'expCaisse.balanceHint': 'الإيداعات − السحوبات − المصاريف',
     'expCaisse.deposit': 'إيداع',

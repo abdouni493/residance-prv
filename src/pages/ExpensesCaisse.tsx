@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   PiggyBank, ArrowDownLeft, ArrowUpRight, TrendingUp, TrendingDown, Wallet,
   ShoppingCart, Wrench, Layers, Pencil, Trash2, AlertTriangle, Tag, BedDouble,
-  CalendarRange, Receipt,
+  CalendarRange, Receipt, Printer,
 } from 'lucide-react';
 import { useApp } from '@/store/appStore';
 import { useAppData } from '@/store/hooks';
@@ -18,6 +18,8 @@ import { TextField, TextArea, RadioGroup, SegmentedControl } from '@/components/
 import { AnimatedNumber } from '@/components/ui/AnimatedCounter';
 import { expensesCaisseRecap, expensesCaisseBalance, expensesCaisseEntries } from '@/store/selectors';
 import type { ExpenseCaisseEntry, ExpenseCaisseEntryKind } from '@/store/selectors';
+import { printHTML } from '@/lib/print';
+import { buildExpensesCaisseHTML, CAISSE_PRINT_STYLES } from '@/lib/printCaisse';
 import { staggerContainer, listItem } from '@/animations';
 import { formatDA, formatDate, todayISO, addDaysISO, addMonthsISO, cn } from '@/lib/utils';
 import type { CashType, ExpenseCashTransaction } from '@/types';
@@ -68,6 +70,7 @@ export default function ExpensesCaisse() {
   const toast = useToast();
   const data = useAppData();
   const deleteTx = useApp((s) => s.deleteExpenseCashTransaction);
+  const storeInfo = useApp((s) => s.storeInfo);
 
   const [period, setPeriod] = useState<Period>('month');
   const [customFrom, setCustomFrom] = useState(addDaysISO(todayISO(), -30));
@@ -113,10 +116,35 @@ export default function ExpensesCaisse() {
         : k === 'expense' ? t('expCaisse.expense')
           : t('expCaisse.maintenance');
 
+  /** Label of a filter chip, reused by the chips themselves and the printout. */
+  const filterLabel = (k: KindFilter) =>
+    k === 'all' ? t('expCaisse.all')
+      : k === 'deposit' ? t('expCaisse.deposits')
+        : k === 'withdrawal' ? t('expCaisse.withdrawals')
+          : k === 'expense' ? t('expCaisse.expenses')
+            : t('expCaisse.maintenances');
+
   const confirmDelete = async () => {
     if (!pendingDelete) return;
     await deleteTx(pendingDelete.id);
     toast.success(t('toast.deleted'));
+  };
+
+  /** Prints exactly what the period + kind filters currently select. */
+  const printList = () => {
+    printHTML(
+      t('expCaisse.printTitle'),
+      buildExpensesCaisseHTML({
+        entries: visibleEntries,
+        recap,
+        balance,
+        store: storeInfo,
+        from,
+        to,
+        filterLabel: filterLabel(kind),
+      }),
+      CAISSE_PRINT_STYLES,
+    );
   };
 
   return (
@@ -127,6 +155,9 @@ export default function ExpensesCaisse() {
         subtitle={t('expCaisse.subtitle')}
         actions={
           <>
+            <GradientButton variant="glass" icon={<Printer size={18} />} onClick={printList}>
+              {t('expCaisse.print')}
+            </GradientButton>
             <GradientButton variant="success" icon={<ArrowDownLeft size={18} />} onClick={() => setTxModal({ type: 'deposit', tx: null })}>
               {t('expCaisse.deposit')}
             </GradientButton>
@@ -228,11 +259,7 @@ export default function ExpensesCaisse() {
             <div className="flex flex-wrap gap-2 mb-4">
               {(['all', 'deposit', 'withdrawal', 'expense', 'maintenance'] as KindFilter[]).map((k) => {
                 const active = kind === k;
-                const label = k === 'all' ? t('expCaisse.all')
-                  : k === 'deposit' ? t('expCaisse.deposits')
-                    : k === 'withdrawal' ? t('expCaisse.withdrawals')
-                      : k === 'expense' ? t('expCaisse.expenses')
-                        : t('expCaisse.maintenances');
+                const label = filterLabel(k);
                 return (
                   <button
                     key={k}
